@@ -41,4 +41,5 @@ setup(
             "pytest-django>=4.1.0",
         ],
     },
+    license="MIT",
 )
