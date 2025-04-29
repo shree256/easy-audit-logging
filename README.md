@@ -38,23 +38,7 @@ MIDDLEWARE = [
 
 4. Configure logging in settings.py:
 ```python
-from easy_logging.logging_config import get_logging_config
-
-# Basic configuration
-LOGGING = get_logging_config()
-
-# Advanced configuration with custom settings
-LOGGING = get_logging_config(
-    audit_log_file="logs/audit.log",      # Path to audit log file
-    container_log_file="logs/container.log",  # Path to container log file
-    console_output=True,                  # Enable console output
-    audit_log_level=15,                   # Custom log level for audit logs
-    container_log_level=logging.INFO,     # Log level for container logs
-    log_rotation={                        # Optional log rotation settings
-        "maxBytes": 10485760,             # 10MB
-        "backupCount": 5,
-    }
-)
+Pass
 ```
 
 ## Log Types
@@ -125,10 +109,6 @@ LOGGING = get_logging_config(
     container_log_level=logging.DEBUG,  # DEBUG level for container logs
 )
 ```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
@@ -243,37 +223,6 @@ Make sure the `logs/` directory exists.
 
 ---
 
-## 🪜 Project Structure
-
-```
-audit_logging/
-﹅
-﹅ __init__.py
-﹅ apps.py
-﹅ constants.py
-﹅ logging.py
-﹅ middleware.py
-﹅ signals.py
-﹅ handlers.py
-﹅ utils.py
-﹅ tests.py
-setup.py
-README.md
-LICENSE
-MANIFEST.in
-```
-
----
-
-## 📊 Future Enhancements
-
-- Capture only **changed fields** during UPDATE events.
-- Include **IP address** and **Request ID** automatically in logs.
-- Support for **model blacklisting**.
-- Configurable **sampling** for high-frequency model events.
-
----
-
 ## 📢 Notes
 
 - Compatible with **Django 3.2+** and **Python 3.7+**.
@@ -294,14 +243,3 @@ MANIFEST.in
 This project is licensed under the MIT License.
 
 ---
-
-# 🌟 Summary
-
-- Capture Django CRUD operations automatically
-- Write structured JSON logs
-- Ready for production-grade logging pipelines
-- Simple pip install, reusable across projects
-- Zero additional database overhead!
-
----
-
