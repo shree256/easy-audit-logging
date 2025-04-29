@@ -17,7 +17,7 @@ A Django package that extends the default logging mechanism to track CRUD operat
 
 1. Install the package:
 ```bash
-pip install django-easy-logging
+pip install easy-audit-logging
 ```
 
 2. Add 'easy_logging' to your INSTALLED_APPS in settings.py:
@@ -151,13 +151,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ### 1. Install via pip
 
 ```bash
-pip install django-easy-logging
+pip install easy-audit-logging
 ```
 
 or if using directly from GitHub:
 
 ```bash
-pip install git+https://github.com/yourusername/django-easy-logging.git
+pip install git+https://github.com/yourusername/easy-audit-logging.git
 ```
 
 ### 2. Add to `INSTALLED_APPS` in `settings.py`
