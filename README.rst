@@ -1,4 +1,4 @@
-Django Easy Logging
+Easy Audit Logging
 ===================
 
 A Django package that extends the default logging mechanism to track CRUD operations and container logs.

@@ -9,7 +9,7 @@ def get_console_formatter() -> dict:
 
 def get_json_file_formatter() -> dict:
     return {
-        "()": "config.settings.local.JsonFileFormatter",
+        "()": "easy_logging.logger_config.JsonFileFormatter",
     }
 
 
