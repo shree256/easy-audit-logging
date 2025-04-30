@@ -9,16 +9,21 @@ def get_console_formatter() -> dict:
 
 def get_json_file_formatter() -> dict:
     return {
-        "()": "easy_logging.logger_config.JsonFileFormatter",
+        "()": "easy_logging.formatter.JsonFileFormatter",
     }
 
 
-def get_json_file_handler(level) -> dict:
+def get_json_file_handler(
+    level: str,
+    filename: str = "logs/app.log",
+    max_bytes: int = 1024 * 1024 * 10,
+    backup_count: int = 5,
+) -> dict:
     return {
         "level": level,
         "class": "logging.handlers.RotatingFileHandler",
         "formatter": "json",
-        "filename": "logs/app.log",
-        "maxBytes": 1024 * 1024 * 10,  # 10MB
-        "backupCount": 5,
+        "filename": filename,
+        "maxBytes": max_bytes,
+        "backupCount": backup_count,
     }

@@ -13,6 +13,7 @@ class JsonFileFormatter(logging.Formatter):
                 "%Y-%m-%d %H:%M:%S.%f"
             )[:-3],
             "level": record.levelname,
+            "name": record.name,
             "path": record.pathname,
             "module": record.module,
             "function": record.funcName,
