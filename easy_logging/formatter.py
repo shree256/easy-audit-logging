@@ -22,8 +22,9 @@ class JsonFileFormatter(logging.Formatter):
 
         log_data["exception"] = ""
         log_data["request"] = ""
+        log_data["extra_fields"] = ""
 
-        # Add exception info if present
+        # Add exception info if present for ERROR
         if record.exc_info:
             log_data["exception"] = "{}".format(self.formatException(record.exc_info))
 
