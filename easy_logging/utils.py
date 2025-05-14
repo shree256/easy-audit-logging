@@ -15,7 +15,7 @@ def get_json_file_formatter() -> dict:
 
 def get_json_file_handler(
     level: str,
-    filename: str = "logs/app.log",
+    filename: str = "audit_logs/app.log",
     max_bytes: int = 1024 * 1024 * 10,
     backup_count: int = 5,
 ) -> dict:
