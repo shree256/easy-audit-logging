@@ -6,10 +6,9 @@ A Django package that extends the default logging mechanism to track CRUD operat
 
 - Automatic logging of CRUD operations (Create, Read, Update, Delete)
 - Tracks both HTTP requests and model changes
-- Custom AUDIT log level (15) between DEBUG and WARNING
+- Custom log levels Audit(21) and API(22) for CRUD and Request-Response auditing.
 - Structured JSON logs for audit trails
 - Human-readable container logs
-- Configurable log rotation
 - Separate log files for audit and container logs
 - Console and file output options
 
@@ -32,214 +31,129 @@ INSTALLED_APPS = [
 ```python
 MIDDLEWARE = [
     ...
-    'easy_logging.middleware.AuditUserMiddleware',
+    'easy_logging.middleware.EasyLoggingMiddleware',
 ]
 ```
 
 4. Configure logging in settings.py:
 ```python
-Pass
-```
+from easy_logging import *
 
-## Log Types
-
-### Audit Logs
-- JSON formatted
-- Contains CRUD operation details
-- Includes user information and model changes
-- Stored in audit.log by default
-
-Example audit log entry:
-```json
-{
-  "timestamp": "2024-04-27T08:25:30.123456",
-  "level": "AUDIT",
-  "logger": "audit_logger",
-  "message": "Model created: User",
-  "event_type": "CREATE",
-  "model": "auth.User",
-  "pk": 123,
-  "fields": {
-    "username": "john_doe",
-    "email": "john@example.com"
-  },
-  "user": "admin",
-  "source": "audit"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": get_json_file_formatter(),
+        "verbose": get_console_formatter(),
+        "api_json": get_api_file_formatter(),
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": get_json_file_handler(level="DEBUG", formatter="json"),
+        "api_file": get_api_file_handler(formatter="api_json"),
+    },
+    "root": {"level": "DEBUG", "handlers": ["console", "file"]},
+    "loggers": {
+        "audit.request": {
+            "handlers": ["api_file"],
+            "level": "API",
+            "propagate": False,
+        },
+        "django": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    }
 }
 ```
 
+5. Create ```audit_logs``` folder in project directory
+
+## Log Types
+
 ### Container Logs
-- Human-readable format
-- Contains Django application logs
-- Includes request/response information
-- Stored in container.log by default
-
-Example container log entry:
-```
-[2024-04-27 08:25:30] INFO [django.server] "GET /api/users/ HTTP/1.1" 200 1234
-[2024-04-27 08:25:31] WARNING [django.request] Not Found: /api/nonexistent/
+#### Console Log Format
+```shell
+'%(levelname)s %(asctime)s %(pathname)s %(module)s %(funcName)s %(message)s'
+-----------------------------------------------------------------------------
+INFO 2025-04-30 08:51:10,403 /app/patients/api/utils.py utils create_patient_with_contacts_and_diseases Patient 'd6c9a056-0b57-453a-8c0f-44319004b761 - Patient3' created.
 ```
 
-## Advanced Configuration
-
-### Custom Log Rotation
-```python
-LOGGING = get_logging_config(
-    log_rotation={
-        "maxBytes": 10485760,  # 10MB
-        "backupCount": 5,
-        "encoding": "utf-8",
-    }
-)
+#### File Log Format
+```json
+{
+    "timestamp": "2025-05-15 13:38:02.141",
+    "level": "DEBUG",
+    "name": "botocore.auth",
+    "path": "/opt/venv/lib/python3.11/site-packages/botocore/auth.py",
+    "module": "auth",
+    "function": "add_auth",
+    "message": "Calculating signature using v4 auth.",
+    "exception": "",
+    "request": "",
+    "extra_fields": ""
+}
 ```
 
-### Disable File Logging
-```python
-LOGGING = get_logging_config(
-    audit_log_file=None,      # Disable audit log file
-    container_log_file=None,  # Disable container log file
-    console_output=True,      # Only console output
-)
+### Request-Response Log
+#### Incoming Log Format
+```json
+{
+    "timestamp": "2025-05-19 15:25:27.836",
+    "level": "API",
+    "name": "audit.request",
+    "message": "Audit Internal Request",
+    "service_name": "review_board",
+    "request_type": "internal",
+    "protocol": "http",
+    "request_repr": {
+        "method": "GET",
+        "path": "/api/v1/health/",
+        "query_params": {},
+        "headers": {
+            "Content-Type": "application/json",
+        },
+        "user": null,
+        "body": {
+            "title": "hello"
+        }
+    },
+    "response_repr": {
+        "status_code": 200,
+        "headers": {
+            "Content-Type": "application/json",
+        },
+        "body": {
+            "status": "ok"
+        }
+    },
+    "error_message": null,
+    "execution_time": 5.376734018325806
+}
 ```
 
-### Different Log Levels
-```python
-LOGGING = get_logging_config(
-    audit_log_level=15,           # AUDIT level for audit logs
-    container_log_level=logging.DEBUG,  # DEBUG level for container logs
-)
+#### External Log format
+```json
+{
+    "timestamp": "2025-05-19 15:25:27.717",
+    "level": "API",
+    "name": "audit.request",
+    "message": "Audit External Service",
+    "service_name": "apollo",
+    "request_type": "external",
+    "protocol": "http",
+    "request_repr": "{'endpoint': 'https://www.sample.com', 'method': 'GET', 'headers': {}, 'body': {}}",
+    "response_repr": "{'status_code': 200, 'body': {'title': 'title', 'expiresIn': 3600, 'error': None, 'errorDescription': None}}",
+    "error_message": "",
+    "execution_time": 5.16809344291687
+}
 ```
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 📆 Features
-
-- **Custom AUDIT log level (15)** between DEBUG and WARNING.
-- **Structured JSON logs** for better parsing and analytics.
-- **Middleware** to capture the authenticated user on each request.
-- **Signals** to track model `CREATE`, `UPDATE`, and `DELETE` events.
-- **Ready for modern log pipelines** — no database storage needed.
-
----
-
-## 🛠 Installation
-
-### 1. Install via pip
-
-```bash
-pip install easy-audit-logging
-```
-
-or if using directly from GitHub:
-
-```bash
-pip install git+https://github.com/yourusername/easy-audit-logging.git
-```
-
-### 2. Add to `INSTALLED_APPS` in `settings.py`
-
-```python
-INSTALLED_APPS += [
-    "audit_logging",
-]
-```
-
-### 3. Add the middleware
-
-```python
-MIDDLEWARE += [
-    "audit_logging.middleware.AuditUserMiddleware",
-]
-```
-
-### 4. Configure the logger in `settings.py`
-
-```python
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "audit_json": {
-            "format": '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", "message": %(message)s}',
-            "datefmt": "%Y-%m-%dT%H:%M:%S",
-        },
-    },
-    "handlers": {
-        "audit_file": {
-            "level": "AUDIT",
-            "class": "logging.FileHandler",
-            "filename": "logs/audit.log",
-            "formatter": "audit_json",
-        },
-    },
-    "loggers": {
-        "audit_logger": {
-            "handlers": ["audit_file"],
-            "level": "AUDIT",
-            "propagate": False,
-        },
-    },
-}
-```
-
-Make sure the `logs/` directory exists.
-
----
-
-## 📃 How It Works
-
-| Event | Captured via | Output |
-|:------|:-------------|:-------|
-| Model Create/Update/Delete | Django model signals | Structured JSON in `audit.log` |
-| Request user identity | Django middleware | Injected into each audit log |
-
----
-
-## 🔥 Example Audit Log
-
-```json
-{
-  "timestamp": "2025-04-27T08:25:30",
-  "level": "AUDIT",
-  "name": "audit_logger",
-  "message": {
-    "timestamp": "2025-04-27T08:25:30",
-    "event_type": "UPDATE",
-    "model": "User",
-    "pk": 123,
-    "fields": {
-      "email": "new@example.com",
-      "username": "newuser"
-    },
-    "user": "admin_user",
-    "source": "audit"
-  }
-}
-```
-
----
-
-## 📢 Notes
-
-- Compatible with **Django 3.2+** and **Python 3.7+**.
-- Designed for easy integration with observability stacks using **Vector**, **ClickHouse**, and **Grafana**.
-
----
-
-## 🔗 Related Tools
-
-- [Vector.dev](https://vector.dev/)
-- [ClickHouse](https://clickhouse.com/)
-- [Grafana](https://grafana.com/)
-
----
-
-## 💜 License
-
-This project is licensed under the MIT License.
-
----
