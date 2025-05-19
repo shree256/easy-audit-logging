@@ -1,4 +1,5 @@
 from easy_logging.constants import CONSOLE_FORMAT
+from easy_logging.logger_level import API
 
 
 def get_console_formatter() -> dict:
@@ -13,17 +14,37 @@ def get_json_file_formatter() -> dict:
     }
 
 
+def get_api_file_formatter() -> dict:
+    return {
+        "()": "easy_logging.formatter.APIFormatter",
+    }
+
+
 def get_json_file_handler(
     level: str,
     filename: str = "audit_logs/app.log",
+    formatter: str = "json",
     max_bytes: int = 1024 * 1024 * 10,
     backup_count: int = 5,
 ) -> dict:
     return {
         "level": level,
         "class": "logging.handlers.RotatingFileHandler",
-        "formatter": "json",
+        "formatter": formatter,
         "filename": filename,
         "maxBytes": max_bytes,
         "backupCount": backup_count,
+    }
+
+
+def get_api_file_handler(
+    filename: str = "audit_logs/audit.log",
+) -> dict:
+    return {
+        "level": API,
+        "class": "easy_logging.handlers.APIHandler",
+        "filename": filename,
+        "maxBytes": 1024 * 1024 * 10,  # 10MB
+        "backupCount": 5,
+        "formatter": "api_formatter",
     }
