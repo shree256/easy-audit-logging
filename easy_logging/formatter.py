@@ -15,9 +15,9 @@ class JsonFileFormatter(logging.Formatter):
         record,
     ):
         log_data = {
-            "timestamp": datetime.datetime.fromtimestamp(record.created).strftime(
-                self.timestamp_format
-            )[:-3],
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created
+            ).strftime(self.timestamp_format)[:-3],
             "level": record.levelname,
             "name": record.name,
             "path": record.pathname,
@@ -26,12 +26,14 @@ class JsonFileFormatter(logging.Formatter):
             "message": record.getMessage(),
             "exception": "",
             "request": "",
-            "extra_fields": "",
+            "extra": "",
         }
 
         # Add exception info if present for ERROR
         if record.exc_info:
-            log_data["exception"] = "{}".format(self.formatException(record.exc_info))
+            log_data["exception"] = "{}".format(
+                self.formatException(record.exc_info)
+            )
 
         # Add request info if available
         if hasattr(record, "request"):
@@ -42,31 +44,45 @@ class JsonFileFormatter(logging.Formatter):
             }
 
         # Add extra fields if present
-        if hasattr(record, "extra_fields"):
-            log_data.update(record.extra_fields)
+        if hasattr(record, "extra"):
+            log_data.update(record.extra)
 
         return json.dumps(log_data)
 
 
-class AuditFormatter(logging.Formatter):
+class APIFormatter(logging.Formatter):
+    """Custom formatter for audit logs that ensures consistent JSON formatting."""
+
     def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
         self.timestamp_format = timestamp_format
 
     def format(self, record):
+        # Start with basic log data
         log_data = {
-            "timestamp": datetime.datetime.fromtimestamp(record.created).strftime(
-                self.timestamp_format
-            )[:-3],
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created
+            ).strftime(self.timestamp_format)[:-3],
             "level": record.levelname,
-            "name": getattr(record, "name", record.name),
+            "name": record.name,
             "message": record.getMessage(),
-            "service_name": getattr(record, "service_name", None),
-            "protocol": getattr(record, "protocol", None),
-            "request_repr": getattr(record, "request_repr", None),
-            "response_repr": getattr(record, "response_repr", None),
-            "error_message": getattr(record, "error_message", None),
-            "execution_time": getattr(record, "execution_time", None),
         }
+
+        # Add all audit-specific fields if they exist
+        audit_fields = [
+            "service_name",
+            "protocol",
+            "request_repr",
+            "response_repr",
+            "error_message",
+            "execution_time",
+        ]
+
+        for field in audit_fields:
+            log_data[field] = getattr(record, field)
+
+        # If we have extra, add it
+        if hasattr(record, "extra"):
+            log_data.update(record.extra)
 
         return json.dumps(log_data)
