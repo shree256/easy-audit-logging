@@ -1,0 +1,176 @@
+import time
+import logging
+import json
+import re
+from django.http import HttpResponse
+from django.utils.deprecation import MiddlewareMixin
+from .settings import UNREGISTERED_URLS, REGISTERED_URLS
+from .constants import REQUEST_TYPES
+
+logger = logging.getLogger("audit.request")
+
+
+def should_log_url(url):
+    # check if current url is blacklisted
+    for unregistered_url in UNREGISTERED_URLS:
+        pattern = re.compile(unregistered_url)
+        if pattern.match(url):
+            return False
+
+    # only audit URLs listed in REGISTERED_URLS (if it's set)
+    if len(REGISTERED_URLS) > 0:
+        for registered_url in REGISTERED_URLS:
+            pattern = re.compile(registered_url)
+            if pattern.match(url):
+                return True
+        return False
+
+    # all good
+    return True
+
+
+class EasyLoggingMiddleware(MiddlewareMixin):
+    """
+    log structure:
+    {
+        "timestamp": "2021-01-01 12:00:00.000",
+        "level": "INFO",
+        "name": "audit.request",
+        "service_name": "default",
+        "protocol": "http",
+        "request_repr": {
+            "endpoint": "https://example.com/api/v1/users",
+            "method": "GET",
+            "headers": {"Content-Type": "application/json"},
+            "body": {"name": "John Doe", "email": "john.doe@example.com"},
+        },
+        "response_repr": {
+            "status_code": 200,
+            "body": {"name": "John Doe", "email": "john.doe@example.com"},
+        },
+        "error_message": "",
+        "execution_time": 0,
+    }
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.log_data = {
+            "service_name": "review_board",
+            "request_type": REQUEST_TYPES[0],
+            "protocol": None,
+            "request_repr": {},
+            "response_repr": {},
+            "error_message": None,
+            "execution_time": 0,
+        }
+
+    def __call__(self, request):
+        if not should_log_url(request.path):
+            return self.get_response(request)
+
+        start_time = time.time()
+
+        # Log request
+        request_data = {
+            "method": request.method,
+            "path": request.path,
+            "query_params": dict(request.GET.items()),
+            "headers": dict(request.headers),
+            "user": str(request.user)
+            if request.user.is_authenticated
+            else None,
+        }
+
+        if request.content_type == "application/json":
+            try:
+                body = json.loads(request.body)
+                request_data["body"] = body
+            except json.JSONDecodeError:
+                request_data["body"] = "Invalid JSON"
+
+        # Get response
+        response = self.get_response(request)
+        end_time = time.time()
+
+        # Log response
+        response_data = {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+        }
+
+        if isinstance(response, HttpResponse):
+            try:
+                content = response.content.decode("utf-8")
+                if content:
+                    try:
+                        response_data["body"] = json.loads(content)
+                    except json.JSONDecodeError:
+                        response_data["body"] = content
+            except UnicodeDecodeError:
+                response_data["body"] = "Binary content"
+
+        self.log_data["execution_time"] = end_time - start_time
+        self.log_data["protocol"] = "https" if request.is_secure() else "http"
+        self.log_data["request_repr"] = request_data
+        self.log_data["response_repr"] = response_data
+
+        logger.api("Audit Internal Request", extra=self.log_data)
+
+        return response
+
+    async def __acall__(self, request):
+        if not should_log_url(request.path):
+            return await self.get_response(request)
+
+        start_time = time.time()
+
+        # Log request
+        request_data = {
+            "method": request.method,
+            "path": request.path,
+            "query_params": dict(request.GET.items()),
+            "headers": dict(request.headers),
+            "user": str(request.user)
+            if request.user.is_authenticated
+            else None,
+        }
+
+        if request.content_type == "application/json":
+            try:
+                body = json.loads(request.body)
+                request_data["body"] = body
+            except json.JSONDecodeError:
+                request_data["body"] = "Invalid JSON"
+
+        logger.info(f"Request: {json.dumps(request_data, indent=2)}")
+
+        # Get response
+        response = await self.get_response(request)
+        end_time = time.time()
+
+        # Log response
+        response_data = {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+        }
+
+        if isinstance(response, HttpResponse):
+            try:
+                content = response.content.decode("utf-8")
+                if content:
+                    try:
+                        response_data["body"] = json.loads(content)
+                    except json.JSONDecodeError:
+                        response_data["body"] = content
+            except UnicodeDecodeError:
+                response_data["body"] = "Binary content"
+
+        self.log_data["execution_time"] = end_time - start_time
+        self.log_data["protocol"] = "https" if request.is_secure() else "http"
+        self.log_data["request_repr"] = request_data
+        self.log_data["response_repr"] = response_data
+
+        logger.api("Audit Internal Request", extra=self.log_data)
+
+        return response
