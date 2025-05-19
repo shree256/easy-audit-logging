@@ -4,7 +4,7 @@ from logging.handlers import RotatingFileHandler
 from .formatter import APIFormatter
 
 
-class APIHandler(RotatingFileHandler):
+class APILogHandler(RotatingFileHandler):
     """Custom handler for audit.protocols logger that ensures proper formatting and validation of audit logs."""
 
     def __init__(
@@ -22,7 +22,7 @@ class APIHandler(RotatingFileHandler):
     def emit(self, record):
         """
         Emit a record with additional validation for audit-specific fields.
-        Matches the structure from HTTPLogClient:
+        Matches the structure from HTTPAuditClient:
         {
             "timestamp": "2021-01-01 12:00:00.000",
             "level": "INFO",
@@ -54,4 +54,4 @@ class APIHandler(RotatingFileHandler):
         except Exception as e:
             self.handleError(record)
             # Log the error to the root logger
-            logging.getLogger().error(f"Error in APIHandler: {str(e)}")
+            logging.getLogger().error(f"Error in AuditLogHandler: {str(e)}")
