@@ -5,21 +5,21 @@ import logging
 
 from typing import Tuple, Optional
 from requests.sessions import Session
+from .constants import REQUEST_TYPES
 
-logger = logging.getLogger("audit.protocols")
+logger = logging.getLogger("audit.request")
 
 PROTOCOLS = ("http", "sftp")
 OPERATIONS = ("upload", "download")
 THIRTY_SECONDS_TIMEOUT = 30
 
-
-class HTTPAuditClient(Session):
-    """
+"""
     log structure:
     {
         "timestamp": "2021-01-01 12:00:00.000",
         "level": "INFO",
-        "name": "audit.protocols",
+        "name": "audit.request",
+        "request_type": "external",
         "service_name": "default",
         "protocol": "http",
         "request_repr": {
@@ -35,15 +35,18 @@ class HTTPAuditClient(Session):
         "error_message": "",
         "execution_time": 0,
     }
-    """
+"""
 
+
+class HTTPClient(Session):
     def __init__(self, service_name: str = "default"):
         super().__init__()
         self.log_payload = {
             "service_name": service_name,
             "protocol": PROTOCOLS[0],
-            "request_repr": "",
-            "response_repr": "",
+            "request_type": REQUEST_TYPES[1],
+            "request_repr": {},
+            "response_repr": {},
             "error_message": "",
             "execution_time": 0,
         }
@@ -81,12 +84,12 @@ class HTTPAuditClient(Session):
         else:
             self.log_payload["response_repr"] = str(response_repr)
 
-        logger.api("HTTPAuditClient", extra=self.log_payload)
+        logger.api("Audit External Service", extra=self.log_payload)
 
         return response
 
 
-class SFTPAuditClient:
+class SFTPClient:
     def __init__(
         self,
         host,
@@ -95,27 +98,6 @@ class SFTPAuditClient:
         password,
         service_name,
     ):
-        """
-        log structure:
-        {
-            "timestamp": "2021-01-01 12:00:00.000",
-            "level": "INFO",
-            "name": "audit.protocols",
-            "service_name": "default",
-            "protocol": "sftp",
-            "request_repr": {
-                "host": "example.com",
-                "operation": "upload",
-                "remote_path": "/path/to/folder",
-                "filename": "file.txt",
-            },
-            "response_repr": {
-                "message": "File uploaded successfully",
-            },
-            "error_message": "",
-            "execution_time": 0,
-        }
-        """
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.host = host
@@ -126,15 +108,16 @@ class SFTPAuditClient:
         self.channel = None
         self.log_payload = {
             "service_name": service_name,
+            "request_type": REQUEST_TYPES[1],
             "protocol": PROTOCOLS[1],
             "request_repr": {
                 "host": host,
                 "operation": None,
-                "remote_path": "",
-                "filename": "",
+                "remote_path": None,
+                "filename": None,
             },
-            "response_repr": "",
-            "error_message": "",
+            "response_repr": None,
+            "error_message": None,
             "execution_time": 0,
         }
 
@@ -195,15 +178,17 @@ class SFTPAuditClient:
                         f"{path_to_folder}{filename}", "wb"
                     ) as remote_file:
                         remote_file.write(file_content)
-                    result = f"{filename} uploaded successfully to {path_to_folder}"
+                    result = (
+                        f"{filename} uploaded successfully to {path_to_folder}"
+                    )
                     logger.info(f"{result}")
                 except Exception as e:
-                    self.log_payload[
-                        "error_message"
-                    ] = f"File upload failed. Error: {str(e)}"
-            self.log_payload[
-                "error_message"
-            ] = f"Path validation failed. Error: {str(error)}"
+                    self.log_payload["error_message"] = (
+                        f"File upload failed. Error: {str(e)}"
+                    )
+            self.log_payload["error_message"] = (
+                f"Path validation failed. Error: {str(error)}"
+            )
         else:
             self.log_payload["error_message"] = "Connection not established"
 

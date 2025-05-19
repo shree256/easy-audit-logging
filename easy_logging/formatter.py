@@ -2,8 +2,6 @@ import logging
 import datetime
 import json
 
-from .constants import CONTAINER_LOG_FILE_FORMAT
-
 
 class JsonFileFormatter(logging.Formatter):
     def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
@@ -15,9 +13,9 @@ class JsonFileFormatter(logging.Formatter):
         record,
     ):
         log_data = {
-            "timestamp": datetime.datetime.fromtimestamp(record.created).strftime(
-                self.timestamp_format
-            )[:-3],
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created
+            ).strftime(self.timestamp_format)[:-3],
             "level": record.levelname,
             "name": record.name,
             "path": record.pathname,
@@ -31,7 +29,9 @@ class JsonFileFormatter(logging.Formatter):
 
         # Add exception info if present for ERROR
         if record.exc_info:
-            log_data["exception"] = "{}".format(self.formatException(record.exc_info))
+            log_data["exception"] = "{}".format(
+                self.formatException(record.exc_info)
+            )
 
         # Add request info if available
         if hasattr(record, "request"):
@@ -58,9 +58,9 @@ class APIFormatter(logging.Formatter):
     def format(self, record):
         # Start with basic log data
         log_data = {
-            "timestamp": datetime.datetime.fromtimestamp(record.created).strftime(
-                self.timestamp_format
-            )[:-3],
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created
+            ).strftime(self.timestamp_format)[:-3],
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),
@@ -69,6 +69,7 @@ class APIFormatter(logging.Formatter):
         # Add all audit-specific fields if they exist
         audit_fields = [
             "service_name",
+            "request_type",
             "protocol",
             "request_repr",
             "response_repr",

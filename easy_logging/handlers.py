@@ -1,11 +1,10 @@
 import logging
-import json
 from logging.handlers import RotatingFileHandler
 from .formatter import APIFormatter
 
 
 class APILogHandler(RotatingFileHandler):
-    """Custom handler for audit.protocols logger that ensures proper formatting and validation of audit logs."""
+    """Custom handler for audit.request logger that ensures proper formatting and validation of audit logs."""
 
     def __init__(
         self,
@@ -21,27 +20,7 @@ class APILogHandler(RotatingFileHandler):
 
     def emit(self, record):
         """
-        Emit a record with additional validation for audit-specific fields.
-        Matches the structure from HTTPAuditClient:
-        {
-            "timestamp": "2021-01-01 12:00:00.000",
-            "level": "INFO",
-            "name": "audit.protocols",
-            "service_name": "default",
-            "protocol": "http",
-            "request_repr": {
-                "endpoint": "https://example.com/api/v1/users",
-                "method": "GET",
-                "headers": {"Content-Type": "application/json"},
-                "body": {"name": "John Doe", "email": "john.doe@example.com"},
-            },
-            "response_repr": {
-                "status_code": 200,
-                "body": {"name": "John Doe", "email": "john.doe@example.com"},
-            },
-            "error_message": "",
-            "execution_time": 0,
-        }
+        Emit a record with additional values for audit-specific fields.
         """
         try:
             # Handle extra if present

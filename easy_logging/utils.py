@@ -38,13 +38,14 @@ def get_json_file_handler(
 
 
 def get_api_file_handler(
-    filename: str = "audit_logs/audit.log",
+    filename: str = "audit_logs/api.log",
+    formatter: str = "api_json",
 ) -> dict:
     return {
         "level": API,
-        "class": "easy_logging.handlers.APIHandler",
+        "class": "easy_logging.handlers.APILogHandler",
         "filename": filename,
         "maxBytes": 1024 * 1024 * 10,  # 10MB
         "backupCount": 5,
-        "formatter": "api_formatter",
+        "formatter": formatter,
     }
