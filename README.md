@@ -72,7 +72,18 @@ LOGGING = {
 }
 ```
 
-5. Create ```audit_logs``` folder in project directory
+5. For external services logging, extend ```HTTPClient or SFTPClient```
+```python
+class ExternalService(HTTPClient):
+    def __init__(self):
+        super().__init__("service_name")
+
+    def connect(self):
+        url = "https://www.sample.com"
+        response = self.get(url) # this will log both request and response
+```
+
+7. Create ```audit_logs``` folder in project directory
 
 ## Log Types
 
