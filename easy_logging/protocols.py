@@ -14,28 +14,41 @@ THIRTY_SECONDS_TIMEOUT = 30
 
 
 class HTTPAuditClient(Session):
+    """
+    log structure:
+    {
+        "timestamp": "2021-01-01 12:00:00.000",
+        "level": "INFO",
+        "name": "audit.protocols",
+        "service_name": "default",
+        "protocol": "http",
+        "request_repr": {
+            "endpoint": "https://example.com/api/v1/users",
+            "method": "GET",
+            "headers": {"Content-Type": "application/json"},
+            "body": {"name": "John Doe", "email": "john.doe@example.com"},
+        },
+        "response_repr": {
+            "status_code": 200,
+            "body": {"name": "John Doe", "email": "john.doe@example.com"},
+        },
+        "error_message": "",
+        "execution_time": 0,
+    }
+    """
+
     def __init__(self, service_name: str = "default"):
         super().__init__()
-
-        self.service_name = service_name
+        self.log_payload = {
+            "service_name": service_name,
+            "protocol": PROTOCOLS[0],
+            "request_repr": "",
+            "response_repr": "",
+            "error_message": "",
+            "execution_time": 0,
+        }
 
     def request(self, method, url, **kwargs):
-        """
-        log structure:
-        {
-            "timestamp": "2021-01-01 12:00:00.000",
-            "level": "INFO",
-            "name": "audit.protocols",
-            "service_name": "default",
-            "protocol": "http",
-            "request_repr": {
-                "endpoint": "https://example.com/api/v1/users",
-                "method": "GET",
-                "headers": {"Content-Type": "application/json"},
-                "body": {"name": "John Doe", "email": "john.doe@example.com"},
-            },
-        }
-        """
         start_time = time.time()
         headers = kwargs.get("headers", {})
         data = kwargs.get("data", {})
@@ -60,19 +73,15 @@ class HTTPAuditClient(Session):
 
         execution_time = time.time() - start_time
 
-        payload = {
-            "service_name": self.service_name,
-            "protocol": PROTOCOLS[0],
-            "request_repr": str(request_repr),
-            "execution_time": execution_time,
-        }
+        self.log_payload["request_repr"] = str(request_repr)
+        self.log_payload["execution_time"] = execution_time
 
         if error:
-            payload["error_message"] = error
+            self.log_payload["error_message"] = error
         else:
-            payload["response_repr"] = str(response_repr)
+            self.log_payload["response_repr"] = str(response_repr)
 
-        logger.api("HTTP request", extra=json.dumps(payload))
+        logger.api("HTTPAuditClient", extra=self.log_payload)
 
         return response
 
@@ -86,6 +95,27 @@ class SFTPAuditClient:
         password,
         service_name,
     ):
+        """
+        log structure:
+        {
+            "timestamp": "2021-01-01 12:00:00.000",
+            "level": "INFO",
+            "name": "audit.protocols",
+            "service_name": "default",
+            "protocol": "sftp",
+            "request_repr": {
+                "host": "example.com",
+                "operation": "upload",
+                "remote_path": "/path/to/folder",
+                "filename": "file.txt",
+            },
+            "response_repr": {
+                "message": "File uploaded successfully",
+            },
+            "error_message": "",
+            "execution_time": 0,
+        }
+        """
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.host = host
