@@ -80,7 +80,7 @@ class ExternalService(HTTPClient):
 
     def connect(self):
         url = "https://www.sample.com"
-        response = self.get(url) # this will log both request and response
+        response = self.get(url) # sample log structure below
 ```
 
 7. Create ```audit_logs``` folder in project directory
