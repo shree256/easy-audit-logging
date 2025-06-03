@@ -1,5 +1,5 @@
 from easy_logging.constants import CONSOLE_FORMAT
-from easy_logging.logger_level import API
+from easy_logging.logger_level import API, AUDIT
 
 
 def get_console_formatter() -> dict:
@@ -20,6 +20,12 @@ def get_api_file_formatter() -> dict:
     }
 
 
+def get_audit_file_formatter() -> dict:
+    return {
+        "()": "easy_logging.formatter.AuditFormatter",
+    }
+
+
 def get_json_file_handler(
     level: str,
     filename: str = "audit_logs/app.log",
@@ -37,15 +43,37 @@ def get_json_file_handler(
     }
 
 
-def get_api_file_handler(
+def get_api_handler(
     filename: str = "audit_logs/api.log",
     formatter: str = "api_json",
 ) -> dict:
     return {
         "level": API,
-        "class": "easy_logging.handlers.APILogHandler",
+        "class": "easy_logging.handlers.EasyLogHandler",
         "filename": filename,
         "maxBytes": 1024 * 1024 * 10,  # 10MB
         "backupCount": 5,
         "formatter": formatter,
     }
+
+
+def get_audit_handler(
+    filename: str = "audit_logs/audit.log",
+    formatter: str = "audit_json",
+) -> dict:
+    return {
+        "level": AUDIT,
+        "class": "easy_logging.handlers.EasyLogHandler",
+        "filename": filename,
+        "maxBytes": 1024 * 1024 * 10,  # 10MB
+        "backupCount": 5,
+        "formatter": formatter,
+    }
+
+
+def push_login_log(user):
+    payload = {
+        "user": get_user_details(),
+        "extra": {},
+    }
+    logger.login(message, extra=payload)
