@@ -80,8 +80,33 @@ class APIFormatter(logging.Formatter):
         for field in audit_fields:
             log_data[field] = getattr(record, field)
 
-        # If we have extra, add it
-        if hasattr(record, "extra"):
-            log_data.update(record.extra)
+        return json.dumps(log_data)
+
+
+class AuditFormatter(logging.Formatter):
+    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+        super().__init__()
+        self.timestamp_format = timestamp_format
+
+    def format(self, record):
+        log_data = {
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created
+            ).strftime(self.timestamp_format)[:-3],
+            "level": record.levelname,
+            "name": record.name,
+            "message": record.getMessage(),
+        }
+
+        audit_fields = [
+            "model",
+            "event_type",
+            "instance_id",
+            "user",
+            "extra",
+        ]
+
+        for field in audit_fields:
+            log_data[field] = getattr(record, field)
 
         return json.dumps(log_data)
