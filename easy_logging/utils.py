@@ -28,7 +28,7 @@ def get_audit_file_formatter() -> dict:
 
 def get_json_file_handler(
     level: str,
-    filename: str = "audit_logs/app.log",
+    filename: str = "easy_logs/app.log",
     formatter: str = "json",
     max_bytes: int = 1024 * 1024 * 10,
     backup_count: int = 5,
@@ -44,7 +44,7 @@ def get_json_file_handler(
 
 
 def get_api_handler(
-    filename: str = "audit_logs/api.log",
+    filename: str = "easy_logs/api.log",
     formatter: str = "api_json",
 ) -> dict:
     return {
@@ -58,7 +58,7 @@ def get_api_handler(
 
 
 def get_audit_handler(
-    filename: str = "audit_logs/audit.log",
+    filename: str = "easy_logs/audit.log",
     formatter: str = "audit_json",
 ) -> dict:
     return {
@@ -69,11 +69,3 @@ def get_audit_handler(
         "backupCount": 5,
         "formatter": formatter,
     }
-
-
-def push_login_log(user):
-    payload = {
-        "user": get_user_details(),
-        "extra": {},
-    }
-    logger.login(message, extra=payload)
