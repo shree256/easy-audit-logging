@@ -13,3 +13,6 @@ class EasyLoggingConfig(AppConfig):
         # Force registration of custom levels
         logger_level.AUDIT
         logger_level.API
+
+        # Initialize signals
+        from . import signals  # noqa
