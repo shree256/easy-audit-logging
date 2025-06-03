@@ -7,7 +7,7 @@ from typing import Tuple, Optional
 from requests.sessions import Session
 from .constants import REQUEST_TYPES
 
-logger = logging.getLogger("audit.request")
+logger = logging.getLogger("easy.request")
 
 PROTOCOLS = ("http", "sftp")
 OPERATIONS = ("upload", "download")

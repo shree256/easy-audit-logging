@@ -2,12 +2,52 @@ import time
 import logging
 import json
 import re
+import contextlib
+
+from asgiref.local import Local
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 from .settings import UNREGISTERED_URLS, REGISTERED_URLS
 from .constants import REQUEST_TYPES
 
-logger = logging.getLogger("audit.request")
+logger = logging.getLogger("easy.request")
+
+_thread_locals = Local()
+
+
+class MockRequest:
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop("user", None)
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+
+def get_current_request():
+    return getattr(_thread_locals, "request", None)
+
+
+def set_current_request(request):
+    _thread_locals.request = request
+
+
+def get_current_user():
+    request = get_current_request()
+    if request:
+        return getattr(request, "user", None)
+    return None
+
+
+def set_current_user(user):
+    try:
+        _thread_locals.request.user = user
+    except AttributeError:
+        request = MockRequest(user=user)
+        _thread_locals.request = request
+
+
+def clear_request():
+    with contextlib.suppress(AttributeError):
+        del _thread_locals.request
 
 
 def should_log_url(url):
@@ -66,6 +106,8 @@ class EasyLoggingMiddleware(MiddlewareMixin):
         }
 
     def __call__(self, request):
+        set_current_request(request)
+
         if not should_log_url(request.path):
             return self.get_response(request)
 
@@ -117,9 +159,13 @@ class EasyLoggingMiddleware(MiddlewareMixin):
 
         logger.api("Audit Internal Request", extra=self.log_data)
 
+        clear_request()
+
         return response
 
     async def __acall__(self, request):
+        set_current_request(request)
+
         if not should_log_url(request.path):
             return await self.get_response(request)
 
@@ -142,8 +188,6 @@ class EasyLoggingMiddleware(MiddlewareMixin):
                 request_data["body"] = body
             except json.JSONDecodeError:
                 request_data["body"] = "Invalid JSON"
-
-        logger.info(f"Request: {json.dumps(request_data, indent=2)}")
 
         # Get response
         response = await self.get_response(request)
@@ -172,5 +216,7 @@ class EasyLoggingMiddleware(MiddlewareMixin):
         self.log_data["response_repr"] = response_data
 
         logger.api("Audit Internal Request", extra=self.log_data)
+
+        clear_request()
 
         return response
