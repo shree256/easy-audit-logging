@@ -91,11 +91,12 @@ def get_login_handler(
     }
 
 
-def push_login_log(message: str, success: bool, error: str, extra: dict):
+def push_usage_log(message: str, event: str, success: bool, error: str, extra: dict):
     """
     data:
         - message: message
         - user: user details
+        - event: login or logout
         - success: true or false
         - error: error message
         - extra: {
@@ -110,6 +111,7 @@ def push_login_log(message: str, success: bool, error: str, extra: dict):
 
     data = {
         "user": get_user_details(),
+        "event": event,
         "success": success,
         "error": error,
         "extra": extra,
