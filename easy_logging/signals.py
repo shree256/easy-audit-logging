@@ -8,10 +8,9 @@ import logging
 import inspect
 from functools import wraps
 from typing import Any, Optional, List, Dict
-from easy_logging.middleware import get_current_user
+from .middleware import get_current_user
 
 logger = logging.getLogger("easy.crud")
-user = get_user_model()
 
 EVENT_TYPES = ["CREATE", "UPDATE", "DELETE", "BULK_CREATE", "BULK_UPDATE"]
 
