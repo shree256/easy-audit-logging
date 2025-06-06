@@ -119,7 +119,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                 f"{event_type} event for {model_class.__name__} (id: {self.pk})",
                 model_class.__name__,
                 event_type,
-                self.pk,
+                str(self.pk),
                 {},
             )
 
@@ -145,7 +145,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                     f"{EVENT_TYPES[3]} event for {model_class.__name__} (id: {first_obj.pk})",
                     model_class.__name__,
                     EVENT_TYPES[3],
-                    first_obj.pk,
+                    str(first_obj.pk),
                     {
                         "total_count": len(created_objs),
                     },
@@ -182,7 +182,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                     f"{EVENT_TYPES[4]} event for {model_class.__name__}",
                     model_class.__name__,
                     EVENT_TYPES[4],
-                    first_obj.pk,
+                    str(first_obj.pk),
                     {
                         "total_count": len(objs),
                         "fields": fields,
@@ -204,7 +204,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                 f"{EVENT_TYPES[2]} event for {model_class.__name__} (id: {instance.pk})",
                 model_class.__name__,
                 EVENT_TYPES[2],
-                instance.pk,
+                str(instance.pk),
             )
 
         # Add M2M signal handling
@@ -226,7 +226,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                     f"M2M {action} event for {model_class.__name__} (id: {instance.pk})",
                     model_class.__name__,
                     f"M2M_{action.upper()}",
-                    instance.pk,
+                    str(instance.pk),
                     {
                         "field_name": field_name,
                         "related_ids": list(pk_set) if pk_set else None,
