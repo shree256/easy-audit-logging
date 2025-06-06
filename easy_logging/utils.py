@@ -14,13 +14,13 @@ def get_json_file_formatter() -> dict:
     }
 
 
-def get_api_file_formatter() -> dict:
+def get_api_formatter() -> dict:
     return {
         "()": "easy_logging.formatter.APIFormatter",
     }
 
 
-def get_audit_file_formatter() -> dict:
+def get_audit_formatter() -> dict:
     return {
         "()": "easy_logging.formatter.AuditFormatter",
     }
