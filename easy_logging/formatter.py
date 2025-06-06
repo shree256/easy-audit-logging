@@ -110,3 +110,29 @@ class AuditFormatter(logging.Formatter):
             log_data[field] = getattr(record, field)
 
         return json.dumps(log_data)
+
+
+class LoginFormatter(logging.Formatter):
+    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+        super().__init__()
+        self.timestamp_format = timestamp_format
+
+    def format(self, record):
+        log_data = {
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created
+            ).strftime(self.timestamp_format)[:-3],
+            "level": record.levelname,
+            "name": record.name,
+            "message": record.getMessage(),
+        }
+
+        audit_fields = [
+            "user",
+            "extra",
+        ]
+
+        for field in audit_fields:
+            log_data[field] = getattr(record, field)
+
+        return json.dumps(log_data)
