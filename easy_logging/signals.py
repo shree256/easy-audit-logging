@@ -12,7 +12,14 @@ from .middleware import get_current_user
 
 logger = logging.getLogger("easy.crud")
 
-EVENT_TYPES = ["CREATE", "UPDATE", "DELETE", "BULK_CREATE", "BULK_UPDATE"]
+EVENT_TYPES = [
+    "CREATE",
+    "UPDATE",
+    "DELETE",
+    "BULK_CREATE",
+    "BULK_UPDATE",
+    "M2M",
+]
 
 
 def get_user_details():
@@ -25,7 +32,9 @@ def get_user_details():
         "middle_name": user.middle_name if hasattr(user, "middle_name") else "",
         "last_name": user.last_name if hasattr(user, "last_name") else "",
         "sex": user.sex if hasattr(user, "sex") else "",
-        "date_of_birth": user.date_of_birth if hasattr(user, "date_of_birth") else "",
+        "date_of_birth": user.date_of_birth
+        if hasattr(user, "date_of_birth")
+        else "",
     }
     return data
 
@@ -48,7 +57,10 @@ def get_calling_model() -> Optional[str]:
         module_name = frame.f_globals.get("__name__", "")
 
         # Check if this is a direct bulk operation call
-        if "bulk_create" in calling_function or "bulk_update" in calling_function:
+        if (
+            "bulk_create" in calling_function
+            or "bulk_update" in calling_function
+        ):
             return module_name.split(".")[-1]
     except Exception:
         pass
@@ -89,11 +101,6 @@ def push_log(
     logger.audit(message, extra=payload)
 
 
-def get_changed_fields(instance: models.Model, fields: List[str]) -> Dict[str, Any]:
-    """Get the changed field values for an instance."""
-    return {field: getattr(instance, field) for field in fields}
-
-
 def patch_model_event(model_class: type[models.Model]) -> None:
     """Monkey patch a model to add signal handling capabilities."""
     if not issubclass(model_class, ModelSignalMixin):
@@ -106,7 +113,9 @@ def patch_model_event(model_class: type[models.Model]) -> None:
         original_bulk_update = models.QuerySet.bulk_update
 
         @wraps(original_save)
-        def save_with_signals(self: models.Model, *args: Any, **kwargs: Any) -> None:
+        def save_with_signals(
+            self: models.Model, *args: Any, **kwargs: Any
+        ) -> None:
             is_new = self._state.adding
 
             # Call the original save method
@@ -155,29 +164,22 @@ def patch_model_event(model_class: type[models.Model]) -> None:
 
         @wraps(original_bulk_update)
         def bulk_update_with_signals(
-            self,
-            objs: List[models.Model],
-            fields: List[str],
-            *args: Any,
-            **kwargs: Any,
+            self, objs: List[models.Model], fields: List[str], batch_size=None
         ) -> None:
             if not objs:
-                return original_bulk_update(self, objs, fields, *args, **kwargs)
+                return original_bulk_update(self, objs, fields, batch_size)
+
+            # Call the original bulk_update method
+            original_bulk_update(self, objs, fields, batch_size)
 
             # Get the calling model
             calling_model = get_calling_model()
             if not calling_model:
-                return original_bulk_update(self, objs, fields, *args, **kwargs)
-
-            # Get the changes for the first object
-            first_obj = objs[0]
-            changes = get_changed_fields(first_obj, fields)
-
-            # Call the original bulk_update method
-            original_bulk_update(self, objs, fields, *args, **kwargs)
+                return original_bulk_update(self, objs, fields, batch_size)
 
             # Log only if this is the calling model
             if calling_model == model_class.__name__:
+                first_obj = objs[0]
                 push_log(
                     f"{EVENT_TYPES[4]} event for {model_class.__name__}",
                     model_class.__name__,
@@ -186,13 +188,12 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                     {
                         "total_count": len(objs),
                         "fields": fields,
-                        "changes": changes,
                     },
                 )
 
         # Replace the methods
         model_class.save = save_with_signals
-        models.QuerySet.bulk_create = bulk_create_with_signals
+        # models.QuerySet.bulk_create = bulk_create_with_signals
         models.QuerySet.bulk_update = bulk_update_with_signals
 
         # Add delete signal handling
@@ -208,30 +209,32 @@ def patch_model_event(model_class: type[models.Model]) -> None:
             )
 
         # Add M2M signal handling
-        for field in model_class._meta.many_to_many:
+        # for field in model_class._meta.many_to_many:
 
-            @receiver(m2m_changed, sender=getattr(model_class, field.name).through)
-            def handle_m2m_changed(
-                sender: type[models.Model],
-                instance: models.Model,
-                action: str,
-                pk_set: set,
-                **kwargs: Any,
-            ) -> None:
-                if action not in ["post_add", "post_remove", "post_clear"]:
-                    return
+        #     @receiver(
+        #         m2m_changed, sender=getattr(model_class, field.name).through
+        #     )
+        #     def handle_m2m_changed(
+        #         sender: type[models.Model],
+        #         instance: models.Model,
+        #         action: str,
+        #         pk_set: set,
+        #         **kwargs: Any,
+        #     ) -> None:
+        #         if action not in ["post_add", "post_remove", "post_clear"]:
+        #             return
 
-                field_name = kwargs.get("model", sender).__name__.lower()
-                push_log(
-                    f"M2M {action} event for {model_class.__name__} (id: {instance.pk})",
-                    model_class.__name__,
-                    f"M2M_{action.upper()}",
-                    str(instance.pk),
-                    {
-                        "field_name": field_name,
-                        "related_ids": list(pk_set) if pk_set else None,
-                    },
-                )
+        #         field_name = kwargs.get("model", sender).__name__.lower()
+        #         push_log(
+        #             f"M2M {action} event for {model_class.__name__} (id: {instance.pk})",
+        #             model_class.__name__,
+        #             EVENT_TYPES[5],
+        #             str(instance.pk),
+        #             {
+        #                 "field_name": field_name,
+        #                 "related_ids": list(pk_set) if pk_set else None,
+        #             },
+        #         )
 
 
 def setup_model_signals() -> None:
