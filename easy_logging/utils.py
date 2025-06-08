@@ -1,5 +1,5 @@
-from easy_logging.constants import CONSOLE_FORMAT
-from easy_logging.logger_level import API, AUDIT, LOGIN
+from .constants import CONSOLE_FORMAT
+from .logger_levels import API, AUDIT, LOGIN
 
 
 def get_console_formatter() -> dict:

@@ -7,6 +7,7 @@ import contextlib
 from asgiref.local import Local
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
+
 from .settings import UNREGISTERED_URLS, REGISTERED_URLS
 from .constants import REQUEST_TYPES
 

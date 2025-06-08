@@ -7,6 +7,7 @@ from django.apps import apps
 from django.db import models
 from functools import wraps
 from typing import Any, Optional, List
+
 from .middleware import get_current_user
 from .settings import UNREGISTERED_CLASSES
 

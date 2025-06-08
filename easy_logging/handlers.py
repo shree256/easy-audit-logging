@@ -1,7 +1,9 @@
 import logging
+
 from logging.handlers import RotatingFileHandler
+
 from .formatters import APIFormatter, AuditFormatter, LoginFormatter
-from .logger_level import API, AUDIT, LOGIN
+from .logger_levels import API, AUDIT, LOGIN
 
 
 class EasyLogHandler(RotatingFileHandler):
