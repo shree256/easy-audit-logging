@@ -119,9 +119,7 @@ class EasyLoggingMiddleware(MiddlewareMixin):
             "path": request.path,
             "query_params": dict(request.GET.items()),
             "headers": dict(request.headers),
-            "user": str(request.user)
-            if request.user.is_authenticated
-            else None,
+            "user": str(request.user) if request.user.is_authenticated else None,
         }
 
         if request.content_type == "application/json":
@@ -177,9 +175,7 @@ class EasyLoggingMiddleware(MiddlewareMixin):
             "path": request.path,
             "query_params": dict(request.GET.items()),
             "headers": dict(request.headers),
-            "user": str(request.user)
-            if request.user.is_authenticated
-            else None,
+            "user": str(request.user) if request.user.is_authenticated else None,
         }
 
         if request.content_type == "application/json":

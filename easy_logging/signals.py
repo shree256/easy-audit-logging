@@ -1,14 +1,14 @@
-from django.db.models.signals import post_save, post_delete, m2m_changed
+import logging
+import inspect
+
+from django.db.models.signals import post_delete, m2m_changed
 from django.dispatch import receiver
 from django.apps import apps
 from django.db import models
-from django.contrib.auth import get_user_model
-from django.utils.module_loading import import_string
-import logging
-import inspect
 from functools import wraps
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List
 from .middleware import get_current_user
+from .settings import UNREGISTERED_CLASSES
 
 logger = logging.getLogger("easy.crud")
 
@@ -22,6 +22,14 @@ EVENT_TYPES = [
 ]
 
 
+def should_audit(instance):
+    """Return True or False to indicate whether the instance should be audited."""
+    # do not audit any model listed in UNREGISTERED_CLASSES
+    for unregistered_class in UNREGISTERED_CLASSES:
+        if isinstance(instance, unregistered_class):
+            return False
+
+
 def get_user_details():
     user = get_current_user()
     data = {
@@ -32,9 +40,7 @@ def get_user_details():
         "middle_name": user.middle_name if hasattr(user, "middle_name") else "",
         "last_name": user.last_name if hasattr(user, "last_name") else "",
         "sex": user.sex if hasattr(user, "sex") else "",
-        "date_of_birth": user.date_of_birth
-        if hasattr(user, "date_of_birth")
-        else "",
+        "date_of_birth": user.date_of_birth if hasattr(user, "date_of_birth") else "",
     }
     return data
 
@@ -57,10 +63,7 @@ def get_calling_model() -> Optional[str]:
         module_name = frame.f_globals.get("__name__", "")
 
         # Check if this is a direct bulk operation call
-        if (
-            "bulk_create" in calling_function
-            or "bulk_update" in calling_function
-        ):
+        if "bulk_create" in calling_function or "bulk_update" in calling_function:
             return module_name.split(".")[-1]
     except Exception:
         pass
@@ -103,6 +106,7 @@ def push_log(
 
 def patch_model_event(model_class: type[models.Model]) -> None:
     """Monkey patch a model to add signal handling capabilities."""
+
     if not issubclass(model_class, ModelSignalMixin):
         # Add the mixin to the model's base classes
         model_class.__bases__ = (ModelSignalMixin,) + model_class.__bases__
@@ -113,9 +117,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
         original_bulk_update = models.QuerySet.bulk_update
 
         @wraps(original_save)
-        def save_with_signals(
-            self: models.Model, *args: Any, **kwargs: Any
-        ) -> None:
+        def save_with_signals(self: models.Model, *args: Any, **kwargs: Any) -> None:
             is_new = self._state.adding
 
             # Call the original save method
@@ -193,7 +195,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
 
         # Replace the methods
         model_class.save = save_with_signals
-        # models.QuerySet.bulk_create = bulk_create_with_signals
+        models.QuerySet.bulk_create = bulk_create_with_signals
         models.QuerySet.bulk_update = bulk_update_with_signals
 
         # Add delete signal handling
@@ -209,38 +211,39 @@ def patch_model_event(model_class: type[models.Model]) -> None:
             )
 
         # Add M2M signal handling
-        # for field in model_class._meta.many_to_many:
+        for field in model_class._meta.many_to_many:
 
-        #     @receiver(
-        #         m2m_changed, sender=getattr(model_class, field.name).through
-        #     )
-        #     def handle_m2m_changed(
-        #         sender: type[models.Model],
-        #         instance: models.Model,
-        #         action: str,
-        #         pk_set: set,
-        #         **kwargs: Any,
-        #     ) -> None:
-        #         if action not in ["post_add", "post_remove", "post_clear"]:
-        #             return
+            @receiver(m2m_changed, sender=getattr(model_class, field.name).through)
+            def handle_m2m_changed(
+                sender: type[models.Model],
+                instance: models.Model,
+                action: str,
+                pk_set: set,
+                **kwargs: Any,
+            ) -> None:
+                if action not in ["post_add", "post_remove", "post_clear"]:
+                    return
 
-        #         field_name = kwargs.get("model", sender).__name__.lower()
-        #         push_log(
-        #             f"M2M {action} event for {model_class.__name__} (id: {instance.pk})",
-        #             model_class.__name__,
-        #             EVENT_TYPES[5],
-        #             str(instance.pk),
-        #             {
-        #                 "field_name": field_name,
-        #                 "related_ids": list(pk_set) if pk_set else None,
-        #             },
-        #         )
+                field_name = kwargs.get("model", sender).__name__.lower()
+                push_log(
+                    f"M2M {action} event for {model_class.__name__} (id: {instance.pk})",
+                    model_class.__name__,
+                    EVENT_TYPES[5],
+                    str(instance.pk),
+                    {
+                        "field_name": field_name,
+                        "related_ids": list(pk_set) if pk_set else None,
+                    },
+                )
 
 
 def setup_model_signals() -> None:
     """Set up signals for all models in the project."""
     for app_config in apps.get_app_configs():
         for model in app_config.get_models():
+            if not should_audit(model):
+                continue
+
             if not issubclass(model, ModelSignalMixin):
                 patch_model_event(model)
 

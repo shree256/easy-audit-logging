@@ -10,25 +10,25 @@ def get_console_formatter() -> dict:
 
 def get_json_file_formatter() -> dict:
     return {
-        "()": "easy_logging.formatter.JsonFileFormatter",
+        "()": "easy_logging.formatters.JsonFileFormatter",
     }
 
 
 def get_api_formatter() -> dict:
     return {
-        "()": "easy_logging.formatter.APIFormatter",
+        "()": "easy_logging.formatters.APIFormatter",
     }
 
 
 def get_audit_formatter() -> dict:
     return {
-        "()": "easy_logging.formatter.AuditFormatter",
+        "()": "easy_logging.formatters.AuditFormatter",
     }
 
 
 def get_login_formatter() -> dict:
     return {
-        "()": "easy_logging.formatter.LoginFormatter",
+        "()": "easy_logging.formatters.LoginFormatter",
     }
 
 
