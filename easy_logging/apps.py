@@ -8,12 +8,12 @@ class EasyLoggingConfig(AppConfig):
 
     def ready(self):
         # Import and register custom log levels
-        from . import logger_level
+        from . import logger_levels
 
         # Force registration of custom levels
-        logger_level.AUDIT
-        logger_level.API
-        logger_level.LOGIN
+        logger_levels.AUDIT
+        logger_levels.API
+        logger_levels.LOGIN
 
         # Initialize signals
         from . import signals  # noqa
