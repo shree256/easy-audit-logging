@@ -1,5 +1,5 @@
-from easy_logging.constants import CONSOLE_FORMAT
-from easy_logging.logger_level import API, AUDIT
+from .constants import CONSOLE_FORMAT
+from .logger_levels import API, AUDIT, LOGIN
 
 
 def get_console_formatter() -> dict:
@@ -10,19 +10,25 @@ def get_console_formatter() -> dict:
 
 def get_json_file_formatter() -> dict:
     return {
-        "()": "easy_logging.formatter.JsonFileFormatter",
+        "()": "easy_logging.formatters.JsonFileFormatter",
     }
 
 
-def get_api_file_formatter() -> dict:
+def get_api_formatter() -> dict:
     return {
-        "()": "easy_logging.formatter.APIFormatter",
+        "()": "easy_logging.formatters.APIFormatter",
     }
 
 
-def get_audit_file_formatter() -> dict:
+def get_audit_formatter() -> dict:
     return {
-        "()": "easy_logging.formatter.AuditFormatter",
+        "()": "easy_logging.formatters.AuditFormatter",
+    }
+
+
+def get_login_formatter() -> dict:
+    return {
+        "()": "easy_logging.formatters.LoginFormatter",
     }
 
 
@@ -69,3 +75,49 @@ def get_audit_handler(
         "backupCount": 5,
         "formatter": formatter,
     }
+
+
+def get_login_handler(
+    filename: str = "easy_logs/login.log",
+    formatter: str = "login_json",
+) -> dict:
+    return {
+        "level": LOGIN,
+        "class": "easy_logging.handlers.EasyLogHandler",
+        "filename": filename,
+        "maxBytes": 1024 * 1024 * 10,  # 10MB
+        "backupCount": 5,
+        "formatter": formatter,
+    }
+
+
+def push_usage_log(message: str, event: str, success: bool, error: str, extra: dict):
+    """
+    data:
+        - message: message
+        - user: user details
+        - event: login or logout
+        - success: true or false
+        - error: error message
+        - extra: {
+            - cognito_id: cognito id
+            - status_code: status code
+        }
+    """
+    import logging
+    from .signals import get_user_details
+
+    logger = logging.getLogger("easy.login")
+
+    data = {
+        "user": get_user_details(),
+        "event": event,
+        "success": success,
+        "error": error,
+        "extra": extra,
+    }
+
+    logger.login(
+        message,
+        extra=data,
+    )

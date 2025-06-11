@@ -7,6 +7,7 @@ import contextlib
 from asgiref.local import Local
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
+
 from .settings import UNREGISTERED_URLS, REGISTERED_URLS
 from .constants import REQUEST_TYPES
 
@@ -119,9 +120,7 @@ class EasyLoggingMiddleware(MiddlewareMixin):
             "path": request.path,
             "query_params": dict(request.GET.items()),
             "headers": dict(request.headers),
-            "user": str(request.user)
-            if request.user.is_authenticated
-            else None,
+            "user": str(request.user) if request.user.is_authenticated else None,
         }
 
         if request.content_type == "application/json":
@@ -177,9 +176,7 @@ class EasyLoggingMiddleware(MiddlewareMixin):
             "path": request.path,
             "query_params": dict(request.GET.items()),
             "headers": dict(request.headers),
-            "user": str(request.user)
-            if request.user.is_authenticated
-            else None,
+            "user": str(request.user) if request.user.is_authenticated else None,
         }
 
         if request.content_type == "application/json":
