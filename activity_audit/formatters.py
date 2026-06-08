@@ -47,6 +47,7 @@ class JsonFormatter(logging.Formatter):
             "path": record.pathname,
             "module": record.module,
             "function": record.funcName,
+            "request_id": getattr(record, "request_id", "") or "",
             "message": record.getMessage(),
             "exception": "",
             # "extra": {},
@@ -86,6 +87,7 @@ class APIFormatter(logging.Formatter):
             "service_name",
             "request_type",
             "protocol",
+            "request_id",
             "user_id",
             "user_info",
             "request_repr",
@@ -117,6 +119,7 @@ class AuditFormatter(logging.Formatter):
         audit_fields = [
             "model",
             "event_type",
+            "request_id",
             "instance_id",
             "instance_repr",
             "user_id",

@@ -4,6 +4,7 @@ import queue
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
 from .formatters import APIFormatter, AuditFormatter, JsonFormatter, LoginFormatter
+from .middleware import get_request_id
 
 
 class BaseAuditHandler(RotatingFileHandler):
@@ -108,6 +109,13 @@ class AsyncBaseAuditHandler(QueueHandler):
         )
         self._listener.start()
 
+    def prepare(self, record):
+        # Capture request_id in the calling thread before the record is queued,
+        # since thread-locals are not accessible from the QueueListener thread.
+        record = super().prepare(record)
+        record.request_id = get_request_id() or ""
+        return record
+
     def close(self):
         self._listener.stop()
         super().close()
@@ -160,6 +168,11 @@ class AsyncJsonHandler(QueueHandler):
             log_queue, sync_handler, respect_handler_level=True
         )
         self._listener.start()
+
+    def prepare(self, record):
+        record = super().prepare(record)
+        record.request_id = get_request_id() or ""
+        return record
 
     def close(self):
         self._listener.stop()
