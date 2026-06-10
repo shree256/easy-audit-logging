@@ -9,7 +9,7 @@ def get_console_formatter() -> dict:
 
 def get_app_formatter() -> dict:
     return {
-        "()": "activity_audit.formatters.JsonFormatter",
+        "()": "activity_audit.formatters.AppFormatter",
     }
 
 def get_api_formatter() -> dict:

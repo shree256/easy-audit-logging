@@ -3,7 +3,7 @@ import queue
 
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
-from .formatters import APIFormatter, AuditFormatter, JsonFormatter, LoginFormatter
+from .formatters import APIFormatter, AuditFormatter, AppFormatter, LoginFormatter
 from .middleware import get_request_id
 
 
@@ -145,7 +145,7 @@ class AsyncLoginLogHandler(AsyncBaseAuditHandler):
 class AsyncJsonHandler(QueueHandler):
     """
     Non-blocking handler for general JSON logs. Wraps a RotatingFileHandler
-    with JsonFormatter on the background thread.
+    with AppFormatter on the background thread.
     """
 
     def __init__(
@@ -163,7 +163,7 @@ class AsyncJsonHandler(QueueHandler):
         sync_handler = RotatingFileHandler(
             filename, mode, maxBytes, backupCount, encoding, delay
         )
-        sync_handler.setFormatter(JsonFormatter())
+        sync_handler.setFormatter(AppFormatter())
         self._listener = QueueListener(
             log_queue, sync_handler, respect_handler_level=True
         )

@@ -29,7 +29,7 @@ def _json_default(obj):
     return str(obj)
 
 
-class JsonFormatter(logging.Formatter):
+class AppFormatter(logging.Formatter):
     def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
         self.timestamp_format = timestamp_format
@@ -50,16 +50,11 @@ class JsonFormatter(logging.Formatter):
             "request_id": getattr(record, "request_id", "") or "",
             "message": record.getMessage(),
             "exception": "",
-            # "extra": {},
         }
 
         # Add exception info if present for ERROR
         if record.exc_info:
             log_data["exception"] = "{}".format(self.formatException(record.exc_info))
-
-        # Add extra fields if present
-        # if hasattr(record, "extra"):
-        #     log_data.update(record.extra)
 
         return json.dumps(log_data, default=_json_default)
 
