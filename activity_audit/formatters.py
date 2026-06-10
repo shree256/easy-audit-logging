@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 
+from .constants import LogType
 
 def _json_default(obj):
     """
@@ -50,6 +51,7 @@ class AppFormatter(logging.Formatter):
             "request_id": getattr(record, "request_id", "") or "",
             "message": record.getMessage(),
             "exception": "",
+            "log_type": LogType.APP,
         }
 
         # Add exception info if present for ERROR
@@ -75,6 +77,7 @@ class APIFormatter(logging.Formatter):
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),
+            "log_type": LogType.API,
         }
 
         # Add all audit-specific fields if they exist
@@ -109,6 +112,7 @@ class AuditFormatter(logging.Formatter):
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),
+            "log_type": LogType.AUDIT,
         }
 
         audit_fields = [
