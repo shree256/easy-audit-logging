@@ -15,5 +15,8 @@ class AuditLoggingConfig(AppConfig):
         logger_levels.API
         logger_levels.LOGIN
 
+        # Populate UNREGISTERED_CLASSES (requires app registry to be ready)
+        from . import unregistered  # noqa
+
         # Initialize signals
         from . import signals  # noqa

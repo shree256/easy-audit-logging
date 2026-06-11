@@ -7,9 +7,20 @@ def get_console_formatter() -> dict:
     }
 
 
-def get_json_formatter() -> dict:
+def get_app_formatter(log_type: str = "app") -> dict:
     return {
-        "()": "activity_audit.formatters.JsonFormatter",
+        "()": "activity_audit.formatters.AppFormatter",
+        "log_type": log_type,
+    }
+
+def get_api_formatter() -> dict:
+    return {
+        "()": "activity_audit.formatters.APIFormatter"
+    }
+
+def get_audit_formatter() -> dict:
+    return {
+        "()": "activity_audit.formatters.AuditFormatter"
     }
 
 
@@ -28,6 +39,7 @@ def get_json_handler(
         "maxBytes": max_bytes,
         "backupCount": backup_count,
     }
+
 
 
 def get_api_handler(

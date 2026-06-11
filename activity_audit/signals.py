@@ -15,8 +15,8 @@ from django.db.models.signals import (
 from django.dispatch import receiver
 from django.forms.models import model_to_dict
 
-from activity_audit.middleware import get_user_details
-from activity_audit.settings import UNREGISTERED_CLASSES
+from activity_audit.middleware import get_request_id, get_user_details
+from activity_audit.unregistered import UNREGISTERED_CLASSES
 
 logger = logging.getLogger("audit.model")
 
@@ -96,6 +96,7 @@ def push_log(
             "model": model,
             "instance_id": str(instance_id),
             "event_type": event_type,
+            "request_id": get_request_id() or "",
             "user_id": user_id,
             "user_info": user_info,
             "instance_repr": instance_repr,

@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 
+from .constants import LogType
 
 def _json_default(obj):
     """
@@ -29,9 +30,10 @@ def _json_default(obj):
     return str(obj)
 
 
-class JsonFormatter(logging.Formatter):
-    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+class AppFormatter(logging.Formatter):
+    def __init__(self, log_type: str = LogType.APP, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
+        self.log_type = log_type
         self.timestamp_format = timestamp_format
 
     def format(
@@ -47,18 +49,15 @@ class JsonFormatter(logging.Formatter):
             "path": record.pathname,
             "module": record.module,
             "function": record.funcName,
+            "request_id": getattr(record, "request_id", "") or "",
             "message": record.getMessage(),
             "exception": "",
-            # "extra": {},
+            "log_type": self.log_type,
         }
 
         # Add exception info if present for ERROR
         if record.exc_info:
             log_data["exception"] = "{}".format(self.formatException(record.exc_info))
-
-        # Add extra fields if present
-        # if hasattr(record, "extra"):
-        #     log_data.update(record.extra)
 
         return json.dumps(log_data, default=_json_default)
 
@@ -66,8 +65,9 @@ class JsonFormatter(logging.Formatter):
 class APIFormatter(logging.Formatter):
     """Custom formatter for audit logs that ensures consistent JSON formatting."""
 
-    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(self, log_type: str = LogType.API, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
+        self.log_type = log_type
         self.timestamp_format = timestamp_format
 
     def format(self, record):
@@ -79,6 +79,7 @@ class APIFormatter(logging.Formatter):
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),
+            "log_type": self.log_type,
         }
 
         # Add all audit-specific fields if they exist
@@ -86,6 +87,7 @@ class APIFormatter(logging.Formatter):
             "service_name",
             "request_type",
             "protocol",
+            "request_id",
             "user_id",
             "user_info",
             "request_repr",
@@ -100,8 +102,9 @@ class APIFormatter(logging.Formatter):
 
 
 class AuditFormatter(logging.Formatter):
-    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(self, log_type: str = LogType.AUDIT, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
+        self.log_type = log_type
         self.timestamp_format = timestamp_format
 
     def format(self, record):
@@ -112,11 +115,13 @@ class AuditFormatter(logging.Formatter):
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),
+            "log_type": self.log_type,
         }
 
         audit_fields = [
             "model",
             "event_type",
+            "request_id",
             "instance_id",
             "instance_repr",
             "user_id",

@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+import uuid
 
 from asgiref.local import Local
 from asgiref.sync import iscoroutinefunction, markcoroutinefunction, sync_to_async
@@ -30,6 +31,14 @@ def get_current_request():
 
 def set_current_request(request):
     _thread_locals.request = request
+
+
+def get_request_id():
+    return getattr(_thread_locals, "request_id", None)
+
+
+def set_request_id(request_id):
+    _thread_locals.request_id = request_id
 
 
 def get_current_user():
@@ -68,6 +77,8 @@ def get_user_details():
 def clear_request():
     with contextlib.suppress(AttributeError):
         del _thread_locals.request
+    with contextlib.suppress(AttributeError):
+        del _thread_locals.request_id
 
 
 def should_log_url(url):
@@ -119,6 +130,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             "service_name": SERVICE_NAME,
             "request_type": REQUEST_TYPES[0],
             "protocol": None,
+            "request_id": "",
             "user_id": "",
             "user_info": {},
             "request_repr": {},
@@ -134,6 +146,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         if iscoroutinefunction(self):
             return self.__acall__(request)
         set_current_request(request)
+        request_id = str(uuid.uuid4())
+        set_request_id(request_id)
 
         if not should_log_url(request.path):
             return self.get_response(request)
@@ -184,6 +198,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         self.log_data["execution_time"] = end_time - start_time
         self.log_data["protocol"] = "https" if request.is_secure() else "http"
+        self.log_data["request_id"] = request_id
         self.log_data["request_repr"] = request_data
         self.log_data["response_repr"] = response_data
 
@@ -195,6 +210,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
     async def __acall__(self, request):
         set_current_request(request)
+        request_id = str(uuid.uuid4())
+        set_request_id(request_id)
 
         if not should_log_url(request.path):
             return await self.get_response(request)
@@ -247,6 +264,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         self.log_data["execution_time"] = end_time - start_time
         self.log_data["protocol"] = "https" if request.is_secure() else "http"
+        self.log_data["request_id"] = request_id
         self.log_data["request_repr"] = request_data
         self.log_data["response_repr"] = response_data
 
