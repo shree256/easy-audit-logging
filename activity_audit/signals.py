@@ -2,7 +2,7 @@ import inspect
 import logging
 
 from functools import wraps
-from typing import Any, List, Optional
+from typing import Any, List
 
 from django.apps import apps
 from django.db import models, transaction
@@ -54,32 +54,70 @@ def should_audit(instance_or_class):
     return True
 
 
-def get_calling_model() -> Optional[str]:
-    """Get the model name from the calling function's frame."""
-    try:
-        # Get the current frame
-        frame = inspect.currentframe()
-        # Go up 3 frames to get to the actual calling function
-        # (1 for get_calling_model, 1 for the signal handler, 1 for the bulk operation)
-        for _ in range(3):
-            frame = frame.f_back
-            if frame is None:
-                return None
-
-        # Get the calling function's name
-        calling_function = frame.f_code.co_name
-        # Get the module name
-        module_name = frame.f_globals.get("__name__", "")
-
-        # Check if this is a direct bulk operation call
-        if "bulk_create" in calling_function or "bulk_update" in calling_function:
-            return module_name.split(".")[-1]
-    except Exception:
-        pass
-    return None
-
-
 _patched_models: set = set()
+_queryset_patched: bool = False
+
+
+def patch_queryset_bulk_methods() -> None:
+    """Patch QuerySet.bulk_create and bulk_update exactly once."""
+    global _queryset_patched
+    if _queryset_patched:
+        return
+    _queryset_patched = True
+
+    original_bulk_create = models.QuerySet.bulk_create
+    original_bulk_update = models.QuerySet.bulk_update
+
+    @wraps(original_bulk_create)
+    def bulk_create_with_signals(
+        self, objs: List[models.Model], *args: Any, **kwargs: Any
+    ) -> List[models.Model]:
+        if not objs:
+            return original_bulk_create(self, objs, *args, **kwargs)
+
+        created_objs = original_bulk_create(self, objs, *args, **kwargs)
+
+        model_class = self.model
+        if not should_audit(model_class):
+            return created_objs
+
+        first_obj = created_objs[0]
+        push_log(
+            f"{EVENT_TYPES[3]} event by {model_class.__name__} (id: {first_obj.pk})",
+            model_class.__name__,
+            EVENT_TYPES[3],
+            str(first_obj.pk),
+            instance_to_dict(first_obj),
+            {"total_count": len(created_objs)},
+        )
+        return created_objs
+
+    @wraps(original_bulk_update)
+    def bulk_update_with_signals(
+        self, objs: List[models.Model], fields: List[str], batch_size=None
+    ) -> None:
+        if not objs:
+            return original_bulk_update(self, objs, fields, batch_size)
+
+        result = original_bulk_update(self, objs, fields, batch_size)
+
+        model_class = self.model
+        if not should_audit(model_class):
+            return result
+
+        first_obj = objs[0]
+        push_log(
+            f"{EVENT_TYPES[4]} event by {model_class.__name__}",
+            model_class.__name__,
+            EVENT_TYPES[4],
+            str(first_obj.pk),
+            instance_to_dict(first_obj),
+            {"total_count": len(objs), "fields": fields},
+        )
+        return result
+
+    models.QuerySet.bulk_create = bulk_create_with_signals
+    models.QuerySet.bulk_update = bulk_update_with_signals
 
 
 def push_log(
@@ -126,8 +164,6 @@ def patch_model_event(model_class: type[models.Model]) -> None:
 
         # Store the original methods
         original_save = model_class.save
-        original_bulk_create = models.QuerySet.bulk_create
-        original_bulk_update = models.QuerySet.bulk_update
 
         # SAVE ---------------------------------------------------------------------------
         @wraps(original_save)
@@ -175,76 +211,8 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                 instance_repr,
             )
 
-        # BULK --------------------------------------------------------------------------
-        @wraps(original_bulk_create)
-        def bulk_create_with_signals(
-            self, objs: List[models.Model], *args: Any, **kwargs: Any
-        ) -> List[models.Model]:
-            if not objs:
-                return original_bulk_create(self, objs, *args, **kwargs)
-
-            # Get the calling model
-            calling_model = get_calling_model()
-            if not calling_model:
-                return original_bulk_create(self, objs, *args, **kwargs)
-
-            # Call the original bulk_create method
-            created_objs = original_bulk_create(self, objs, *args, **kwargs)
-
-            # Log only if this is the calling model
-            if calling_model == model_class.__name__:
-                first_obj = created_objs[0]
-                instance_repr = instance_to_dict(first_obj)
-
-                push_log(
-                    f"{EVENT_TYPES[3]} event by {model_class.__name__} (id: {first_obj.pk})",
-                    model_class.__name__,
-                    EVENT_TYPES[3],
-                    str(first_obj.pk),
-                    instance_repr,
-                    {
-                        "total_count": len(created_objs),
-                    },
-                )
-
-            return created_objs
-
-        @wraps(original_bulk_update)
-        def bulk_update_with_signals(
-            self, objs: List[models.Model], fields: List[str], batch_size=None
-        ) -> None:
-            if not objs:
-                return original_bulk_update(self, objs, fields, batch_size)
-
-            # Call the original bulk_update method
-            bulk_update = original_bulk_update(self, objs, fields, batch_size)
-
-            # Get the calling model
-            calling_model = get_calling_model()
-            if not calling_model:
-                return bulk_update
-
-            # Log only if this is the calling model
-            if calling_model == model_class.__name__:
-                first_obj = objs[0]
-                instance_repr = instance_to_dict(first_obj)
-
-                push_log(
-                    f"{EVENT_TYPES[4]} event by {model_class.__name__}",
-                    model_class.__name__,
-                    EVENT_TYPES[4],
-                    str(first_obj.pk),
-                    instance_repr,
-                    {
-                        "total_count": len(objs),
-                        "fields": fields,
-                    },
-                )
-
         # Replace the methods
         model_class.save = save_with_signals
-        models.QuerySet.bulk_create = bulk_create_with_signals
-        models.QuerySet.bulk_update = bulk_update_with_signals
 
         # DELETE -----------------------------------------------------------------------
         @receiver(pre_delete, sender=model_class)
@@ -311,6 +279,7 @@ def patch_model_event(model_class: type[models.Model]) -> None:
 
 def setup_model_signals() -> None:
     """Set up signals for all models in the project."""
+    patch_queryset_bulk_methods()
     for app_config in apps.get_app_configs():
         for model in app_config.get_models():
             if not should_audit(model):
