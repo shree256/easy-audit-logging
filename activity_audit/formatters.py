@@ -31,8 +31,9 @@ def _json_default(obj):
 
 
 class AppFormatter(logging.Formatter):
-    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(self, log_type: str = LogType.APP, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
+        self.log_type = log_type
         self.timestamp_format = timestamp_format
 
     def format(
@@ -51,7 +52,7 @@ class AppFormatter(logging.Formatter):
             "request_id": getattr(record, "request_id", "") or "",
             "message": record.getMessage(),
             "exception": "",
-            "log_type": LogType.APP,
+            "log_type": self.log_type,
         }
 
         # Add exception info if present for ERROR
@@ -64,8 +65,9 @@ class AppFormatter(logging.Formatter):
 class APIFormatter(logging.Formatter):
     """Custom formatter for audit logs that ensures consistent JSON formatting."""
 
-    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(self, log_type: str = LogType.API, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
+        self.log_type = log_type
         self.timestamp_format = timestamp_format
 
     def format(self, record):
@@ -77,7 +79,7 @@ class APIFormatter(logging.Formatter):
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),
-            "log_type": LogType.API,
+            "log_type": self.log_type,
         }
 
         # Add all audit-specific fields if they exist
@@ -100,8 +102,9 @@ class APIFormatter(logging.Formatter):
 
 
 class AuditFormatter(logging.Formatter):
-    def __init__(self, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(self, log_type: str = LogType.AUDIT, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
         super().__init__()
+        self.log_type = log_type
         self.timestamp_format = timestamp_format
 
     def format(self, record):
@@ -112,7 +115,7 @@ class AuditFormatter(logging.Formatter):
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),
-            "log_type": LogType.AUDIT,
+            "log_type": self.log_type,
         }
 
         audit_fields = [

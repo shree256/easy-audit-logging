@@ -7,9 +7,10 @@ def get_console_formatter() -> dict:
     }
 
 
-def get_app_formatter() -> dict:
+def get_app_formatter(log_type: str = "app") -> dict:
     return {
         "()": "activity_audit.formatters.AppFormatter",
+        "log_type": log_type,
     }
 
 def get_api_formatter() -> dict:

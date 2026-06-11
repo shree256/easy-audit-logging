@@ -6,6 +6,8 @@ class LogType(str, enum.Enum):
     API = "api"
     AUDIT = "audit"
     LOGIN = "login"
+    CELERYWORKER = "celeryworker"
+    CELERYBEAT = "celerybeat"
 
 
 CONSOLE_FORMAT = (
