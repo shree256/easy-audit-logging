@@ -1,408 +1,519 @@
-import json
+"""
+Audit test suite covering:
+  1. Incoming request-response is logged
+  2. Model create / update / delete is logged
+  3. M2M field changes are logged
+  4. Console (stream) output from each formatter includes all declared fields
+  5. The same request_id is generated once and flows through app, api, and audit logs
+"""
 
-from pathlib import Path
+import io
+import json
+import logging
 
 import pytest
-
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from tests.publications.models import Author, Book
 
 
-@pytest.mark.django_db
-class TestModelOperations:
-    """Test 1 & 2: Check model creation and update logging"""
+# ---------------------------------------------------------------------------
+# 1. Request / response logging
+# ---------------------------------------------------------------------------
 
-    @pytest.fixture(autouse=True)
-    def setup_audit_dir(self):
-        """Set up audit directory for each test."""
-        self.audit_dir = Path("tests/audit")
-        self.audit_dir.mkdir(exist_ok=True)
 
-    def test_model_creation_logging(self):
-        """Test that model creation is properly logged"""
-        # Create an author
-        author = Author.objects.create(
-            name="Test Author",
-            experience="Experienced writer with 10 years in publishing",
+@pytest.mark.django_db(transaction=True)
+class TestRequestResponseLogging:
+    """Incoming HTTP requests and their responses are captured in the audit log."""
+
+    def test_get_request_is_logged(self, request_log_capture):
+        client = APIClient()
+        response = client.get("/api/authors/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(request_log_capture.by_level("API")) >= 1
+
+    def test_post_request_is_logged(self, request_log_capture):
+        client = APIClient()
+        response = client.post(
+            "/api/authors/",
+            {"name": "Posted Author", "experience": "Some"},
+            format="json",
         )
 
-        # Create a book
-        book = Book.objects.create(title="Test Book", author=author)
+        assert response.status_code == status.HTTP_201_CREATED
+        assert len(request_log_capture.by_level("API")) >= 1
 
-        # Force flush of all loggers
-        import logging
+    def test_request_log_has_required_fields(self, request_log_capture):
+        client = APIClient()
+        client.get("/api/authors/")
 
-        for handler in logging.getLogger("audit.model").handlers:
-            handler.flush()
+        records = request_log_capture.by_level("API")
+        assert records, "Expected at least one API log record"
+        record = records[0]
 
-        # Check that audit logs were created
-        log_files = list(self.audit_dir.glob("*.jsonl"))
-        assert len(log_files) > 0, "No audit log files found"
+        for field in (
+            "service_name",
+            "request_type",
+            "protocol",
+            "request_id",
+            "user_id",
+            "user_info",
+            "request_repr",
+            "response_repr",
+            "error_message",
+            "execution_time",
+        ):
+            assert hasattr(record, field), f"API log record missing field: {field}"
 
-        # Read and verify the logs
-        creation_logs_found = 0
-        for log_file in log_files:
-            with open(log_file, "r") as f:
-                for line in f:
-                    if line.strip():
-                        log_entry = json.loads(line)
-                        if log_entry.get("event_type") == "CREATE" and log_entry.get(
-                            "model"
-                        ) in ["Author", "Book"]:
-                            creation_logs_found += 1
+        assert "method" in record.request_repr
+        assert "path" in record.request_repr
+        assert "query_params" in record.request_repr
+        assert "headers" in record.request_repr
+        assert "headers" in record.response_repr
 
-        assert (
-            creation_logs_found >= 2
-        ), f"Expected at least 2 creation logs, found {creation_logs_found}"
+    def test_execution_time_is_non_negative(self, request_log_capture):
+        client = APIClient()
+        client.get("/api/authors/")
 
-    def test_model_update_logging(self):
-        """Test that model updates are properly logged"""
-        # Create initial objects
-        author = Author.objects.create(
-            name="Original Author", experience="Original experience"
-        )
+        records = request_log_capture.by_level("API")
+        assert records
+        assert records[0].execution_time >= 0
 
-        book = Book.objects.create(title="Original Title", author=author)
+    def test_request_id_is_populated(self, request_log_capture):
+        client = APIClient()
+        client.get("/api/authors/")
 
-        # Update the author
-        author.experience = "Updated experience with new skills"
+        records = request_log_capture.by_level("API")
+        assert records
+        assert records[0].request_id, "request_id should be a non-empty UUID string"
+
+
+# ---------------------------------------------------------------------------
+# 2. Model CRUD logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+class TestModelCRUDLogging:
+    """CREATE, UPDATE, and DELETE operations each produce an audit log entry."""
+
+    def test_create_is_logged(self, model_log_capture):
+        Author.objects.create(name="New Author", experience="Ten years")
+
+        events = model_log_capture.by_event_type("CREATE")
+        assert events, "Expected a CREATE audit record"
+        assert events[0].model == "Author"
+        assert events[0].instance_id
+
+    def test_create_log_has_required_fields(self, model_log_capture):
+        Author.objects.create(name="Field Author", experience="Some")
+
+        events = model_log_capture.by_event_type("CREATE")
+        assert events
+        record = events[0]
+
+        for field in (
+            "model",
+            "event_type",
+            "instance_id",
+            "instance_repr",
+            "user_id",
+            "user_info",
+            "extra",
+            "request_id",
+        ):
+            assert hasattr(record, field), f"Model log record missing field: {field}"
+
+    def test_update_is_logged(self, model_log_capture):
+        author = Author.objects.create(name="Author", experience="Original")
+        model_log_capture.clear()
+
+        author.experience = "Updated experience"
         author.save()
 
-        # Update the book
-        book.title = "Updated Book Title"
-        book.save()
+        events = model_log_capture.by_event_type("UPDATE")
+        assert events, "Expected an UPDATE audit record"
+        assert events[0].model == "Author"
 
-        # Force flush of all loggers
-        import logging
+    def test_deletion_is_logged(self, model_log_capture):
+        author = Author.objects.create(name="Doomed Author", experience="Temporary")
+        author_id = str(author.pk)
+        model_log_capture.clear()
 
-        for handler in logging.getLogger("audit.model").handlers:
-            handler.flush()
+        author.delete()
 
-        # Check that update logs were created
-        log_files = list(self.audit_dir.glob("*.jsonl"))
-        assert len(log_files) > 0, "No audit log files found after updates"
+        events = model_log_capture.by_event_type("DELETE")
+        assert events, "Expected a DELETE audit record"
+        record = events[0]
+        assert record.model == "Author"
+        assert record.instance_id == author_id
 
-        # Read and verify the update logs
-        update_logs_found = 0
-        for log_file in log_files:
-            with open(log_file, "r") as f:
-                for line in f:
-                    if line.strip():
-                        log_entry = json.loads(line)
-                        if log_entry.get("event_type") == "UPDATE" and log_entry.get(
-                            "model"
-                        ) in ["Author", "Book"]:
-                            update_logs_found += 1
+    def test_delete_also_emits_pre_delete(self, model_log_capture):
+        author = Author.objects.create(name="Pre-Delete Author", experience="Temp")
+        model_log_capture.clear()
 
-        assert (
-            update_logs_found >= 2
-        ), f"Expected at least 2 update logs, found {update_logs_found}"
+        author.delete()
+
+        assert model_log_capture.by_event_type(
+            "PRE_DELETE"
+        ), "Expected a PRE_DELETE audit record"
+
+    def test_instance_repr_contains_saved_values(self, model_log_capture):
+        Author.objects.create(name="Repr Author", experience="Check repr")
+
+        events = model_log_capture.by_event_type("CREATE")
+        author_events = [e for e in events if e.model == "Author"]
+        assert author_events
+        repr_data = author_events[0].instance_repr
+        assert repr_data.get("name") == "Repr Author"
+        assert repr_data.get("experience") == "Check repr"
 
 
-@pytest.mark.django_db
-class TestAPIRequests:
-    """Test 3: Check API request logging"""
+# ---------------------------------------------------------------------------
+# 3. M2M field logging
+# ---------------------------------------------------------------------------
 
-    @pytest.fixture(autouse=True)
-    def setup_test(self):
-        """Set up test environment."""
-        self.client = APIClient()
-        self.audit_dir = Path("tests/audit")
-        self.audit_dir.mkdir(exist_ok=True)
 
-    def test_api_request_logging(self):
-        """Test that API requests are properly logged"""
-        # Create test data
-        author = Author.objects.create(
-            name="API Test Author", experience="Test experience for API"
+@pytest.mark.django_db(transaction=True)
+class TestM2MLogging:
+    """Adding and removing M2M relationships produce M2M audit log entries."""
+
+    def _create_book_with_authors(self):
+        primary = Author.objects.create(name="Primary", experience="Lead")
+        co = Author.objects.create(name="Co-author", experience="Support")
+        book = Book.objects.create(title="Collaborative Work", author=primary)
+        return book, co
+
+    def test_m2m_add_is_logged(self, model_log_capture):
+        book, co = self._create_book_with_authors()
+        model_log_capture.clear()
+
+        book.co_authors.add(co)
+
+        events = model_log_capture.by_event_type("M2M")
+        assert events, "Expected an M2M audit record after add"
+        record = events[0]
+        assert record.model == "Book"
+        assert str(co.pk) in record.extra.get("related_ids", [])
+
+    def test_m2m_remove_is_logged(self, model_log_capture):
+        book, co = self._create_book_with_authors()
+        book.co_authors.add(co)
+        model_log_capture.clear()
+
+        book.co_authors.remove(co)
+
+        events = model_log_capture.by_event_type("M2M")
+        assert events, "Expected an M2M audit record after remove"
+        assert events[0].model == "Book"
+
+    def test_m2m_log_contains_instance_repr(self, model_log_capture):
+        book, co = self._create_book_with_authors()
+        model_log_capture.clear()
+
+        book.co_authors.add(co)
+
+        events = model_log_capture.by_event_type("M2M")
+        assert events
+        assert events[0].instance_repr, "M2M log should carry the instance repr"
+
+
+# ---------------------------------------------------------------------------
+# 4. Formatter / console output
+# ---------------------------------------------------------------------------
+
+
+def _make_record(name, level=logging.INFO, **attrs):
+    """Build a LogRecord pre-populated with the given extra attributes."""
+    record = logging.LogRecord(
+        name=name,
+        level=level,
+        pathname="/app/module.py",
+        lineno=42,
+        msg="Test message",
+        args=(),
+        exc_info=None,
+    )
+    for key, value in attrs.items():
+        setattr(record, key, value)
+    return record
+
+
+def _emit_to_stream(formatter, record):
+    """Emit a record through a StreamHandler and return the parsed JSON output."""
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(formatter)
+    handler.emit(record)
+    return json.loads(stream.getvalue().strip())
+
+
+class TestFormatterConsoleOutput:
+    """Each formatter produces JSON that contains every field it declares."""
+
+    def test_audit_formatter_has_all_declared_fields(self):
+        from activity_audit.formatters import AuditFormatter
+
+        formatter = AuditFormatter()
+        record = _make_record(
+            "audit.model",
+            model="Author",
+            event_type="CREATE",
+            request_id="req-abc",
+            instance_id="7",
+            instance_repr={"name": "Alice"},
+            user_id="u-1",
+            user_info={"email": "alice@example.com"},
+            extra={"source": "test"},
         )
 
-        book = Book.objects.create(title="API Test Book", author=author)
+        output = _emit_to_stream(formatter, record)
 
-        # Make API requests
-        # GET request
-        response = self.client.get("/api/books/")
-        assert response.status_code == status.HTTP_200_OK
+        for field in (
+            "timestamp",
+            "level",
+            "name",
+            "message",
+            "log_type",
+            "model",
+            "event_type",
+            "request_id",
+            "instance_id",
+            "instance_repr",
+            "user_id",
+            "user_info",
+            "extra",
+        ):
+            assert field in output, f"AuditFormatter missing field in output: {field}"
 
-        # POST request
-        new_book_data = {"title": "New API Book", "author": author.id}
-        response = self.client.post("/api/books/", new_book_data, format="json")
+        assert output["model"] == "Author"
+        assert output["event_type"] == "CREATE"
+        assert output["request_id"] == "req-abc"
+        assert output["instance_repr"] == {"name": "Alice"}
+
+    def test_api_formatter_has_all_declared_fields(self):
+        from activity_audit.formatters import APIFormatter
+
+        formatter = APIFormatter()
+        record = _make_record(
+            "audit.request",
+            service_name="test-svc",
+            request_type="internal",
+            protocol="http",
+            request_id="req-xyz",
+            user_id="u-2",
+            user_info={"email": "bob@example.com"},
+            request_repr={"method": "GET", "path": "/api/test/", "headers": {}, "query_params": {}},
+            response_repr={"headers": {}, "body": []},
+            error_message=None,
+            execution_time=0.045,
+        )
+
+        output = _emit_to_stream(formatter, record)
+
+        for field in (
+            "timestamp",
+            "level",
+            "name",
+            "message",
+            "log_type",
+            "service_name",
+            "request_type",
+            "protocol",
+            "request_id",
+            "user_id",
+            "user_info",
+            "request_repr",
+            "response_repr",
+            "error_message",
+            "execution_time",
+        ):
+            assert field in output, f"APIFormatter missing field in output: {field}"
+
+        assert output["service_name"] == "test-svc"
+        assert output["execution_time"] == pytest.approx(0.045)
+        assert output["request_repr"]["method"] == "GET"
+
+    def test_app_formatter_has_all_declared_fields(self):
+        from activity_audit.formatters import AppFormatter
+
+        formatter = AppFormatter()
+        record = _make_record("app.general")
+
+        output = _emit_to_stream(formatter, record)
+
+        for field in (
+            "timestamp",
+            "level",
+            "name",
+            "path",
+            "module",
+            "function",
+            "request_id",
+            "message",
+            "exception",
+            "log_type",
+        ):
+            assert field in output, f"AppFormatter missing field in output: {field}"
+
+    def test_app_formatter_includes_request_id_from_thread_local(self):
+        """AppFormatter pulls request_id from thread-local when not on the record."""
+        from activity_audit.formatters import AppFormatter
+        from activity_audit.middleware import set_request_id, clear_request
+
+        set_request_id("thread-local-id")
+        try:
+            formatter = AppFormatter()
+            record = _make_record("app.general")
+            output = _emit_to_stream(formatter, record)
+            assert output["request_id"] == "thread-local-id"
+        finally:
+            clear_request()
+
+    def test_formatter_output_is_valid_json(self):
+        """All formatters produce well-formed JSON (no trailing garbage)."""
+        from activity_audit.formatters import AuditFormatter, APIFormatter, AppFormatter
+
+        cases = [
+            (AuditFormatter(), _make_record("audit.model", model="X", event_type="CREATE",
+                                            request_id="", instance_id="1",
+                                            instance_repr={}, user_id="", user_info={}, extra={})),
+            (APIFormatter(), _make_record("audit.request", service_name="", request_type="",
+                                          protocol="", request_id="", user_id="", user_info={},
+                                          request_repr={}, response_repr={},
+                                          error_message=None, execution_time=0)),
+            (AppFormatter(), _make_record("app")),
+        ]
+
+        for formatter, record in cases:
+            stream = io.StringIO()
+            handler = logging.StreamHandler(stream)
+            handler.setFormatter(formatter)
+            handler.emit(record)
+            raw = stream.getvalue().strip()
+            try:
+                json.loads(raw)
+            except json.JSONDecodeError as exc:
+                pytest.fail(f"{formatter.__class__.__name__} produced invalid JSON: {exc}\n{raw}")
+
+
+# ---------------------------------------------------------------------------
+# 5. request_id propagation across app / api / audit loggers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+class TestRequestIdPropagation:
+    """A single UUID request_id is minted per request and appears identically
+    in the app log (AppFormatter reads thread-local), the api log (middleware
+    sets it explicitly in extra), and the audit model log (signal reads
+    thread-local via get_request_id()).
+
+    The app_log_capture fixture formats records at emit time so that the
+    thread-local is still populated when request_id is resolved.
+    """
+
+    def test_request_id_is_identical_across_all_three_loggers(
+        self, app_log_capture, request_log_capture, model_log_capture
+    ):
+        client = APIClient()
+        response = client.post(
+            "/api/authors/",
+            {"name": "Propagation Author", "experience": "Ten years"},
+            format="json",
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
-        # PUT request
-        update_data = {"title": "Updated API Book Title", "author": author.id}
-        response = self.client.put(f"/api/books/{book.id}/", update_data, format="json")
-        assert response.status_code == status.HTTP_200_OK
+        api_records = request_log_capture.by_level("API")
+        audit_records = model_log_capture.by_event_type("CREATE")
+        app_outputs = app_log_capture.formatted_outputs
 
-        # Force flush of all loggers
-        import logging
+        assert api_records, "No API log captured"
+        assert audit_records, "No AUDIT CREATE log captured"
+        assert app_outputs, "No app log captured — check perform_create logs via app.publications"
 
-        for handler in logging.getLogger("audit.request").handlers:
-            handler.flush()
+        api_request_id = api_records[0].request_id
+        audit_request_id = audit_records[0].request_id
+        app_request_id = app_outputs[0]["request_id"]
 
-        # Check that API request logs were created
-        log_files = list(self.audit_dir.glob("*.jsonl"))
-        assert len(log_files) > 0, "No audit log files found after API requests"
-
-        # Read and verify the API request logs
-        api_logs_found = 0
-        for log_file in log_files:
-            with open(log_file, "r") as f:
-                for line in f:
-                    if line.strip():
-                        log_entry = json.loads(line)
-                        if log_entry.get("name") == "audit.request" and log_entry.get(
-                            "request_repr", {}
-                        ).get("method") in ["GET", "POST", "PUT"]:
-                            api_logs_found += 1
-
-        assert (
-            api_logs_found >= 3
-        ), f"Expected at least 3 API request logs, found {api_logs_found}"
-
-    def test_audit_folder_structure(self):
-        """Test that logs are generated in the audit folder"""
-        # Make a simple API request
-        response = self.client.get("/api/authors/")
-        assert response.status_code == status.HTTP_200_OK
-
-        # Force flush of all loggers
-        import logging
-
-        for handler in logging.getLogger("audit.request").handlers:
-            handler.flush()
-
-        # Check that audit directory exists and contains log files
-        assert self.audit_dir.exists(), "Audit directory does not exist"
-
-        log_files = list(self.audit_dir.glob("*.jsonl"))
-        assert len(log_files) > 0, "No log files found in audit directory"
-
-        # Verify log file content is valid JSON
-        for log_file in log_files:
-            with open(log_file, "r") as f:
-                for line_num, line in enumerate(f, 1):
-                    if line.strip():
-                        try:
-                            json.loads(line)
-                        except json.JSONDecodeError as e:
-                            pytest.fail(
-                                f"Invalid JSON in {log_file} at line {line_num}: {e}"
-                            )
-
-
-@pytest.mark.django_db
-class TestLogFileContents:
-    """Test log file contents and structure"""
-
-    @classmethod
-    def setup_class(cls):
-        """Set up audit directory for these tests."""
-        audit_dir = Path("tests/audit")
-        audit_dir.mkdir(exist_ok=True)
-
-    @pytest.fixture(autouse=True)
-    def setup_audit_dir(self):
-        """Set up audit directory for each test."""
-        self.audit_dir = Path("tests/audit")
-        self.audit_dir.mkdir(exist_ok=True)
-
-    def test_model_log_file_contents(self):
-        """Test that model log files contain properly structured JSON with expected fields"""
-        # Create test data to generate logs
-        author = Author.objects.create(
-            name="Log Content Test Author", experience="Testing log file contents"
+        assert api_request_id, "API request_id must be non-empty"
+        assert api_request_id == audit_request_id, (
+            f"api ({api_request_id!r}) != audit ({audit_request_id!r})"
+        )
+        assert api_request_id == app_request_id, (
+            f"api ({api_request_id!r}) != app ({app_request_id!r})"
         )
 
-        book = Book.objects.create(title="Log Content Test Book", author=author)
+    def test_each_request_gets_a_unique_request_id(self, request_log_capture):
+        client = APIClient()
+        client.get("/api/authors/")
+        client.get("/api/authors/")
 
-        # Update to generate update logs
-        author.experience = "Updated for log content testing"
-        author.save()
+        api_records = request_log_capture.by_level("API")
+        assert len(api_records) >= 2, "Expected at least two API log records"
 
-        # Force flush of all loggers
-        import logging
+        first_id = api_records[0].request_id
+        second_id = api_records[1].request_id
+        assert first_id != second_id, (
+            "Different requests must receive different request_ids"
+        )
 
-        for handler in logging.getLogger("audit.model").handlers:
-            handler.flush()
+    def test_request_id_is_a_valid_uuid(self, request_log_capture):
+        import uuid
 
-        # Check audit.jsonl file structure
-        audit_file = self.audit_dir / "audit.jsonl"
-        assert audit_file.exists(), "audit.jsonl file should exist"
+        client = APIClient()
+        client.get("/api/authors/")
 
-        log_entries = []
-        with open(audit_file, "r") as f:
-            for line in f:
-                if line.strip():
-                    log_entries.append(json.loads(line))
+        records = request_log_capture.by_level("API")
+        assert records
+        try:
+            uuid.UUID(records[0].request_id)
+        except ValueError:
+            pytest.fail(
+                f"request_id {records[0].request_id!r} is not a valid UUID"
+            )
 
-        assert len(log_entries) > 0, "Should have at least one log entry"
+    def test_m2m_log_carries_same_request_id_as_api_log(
+        self, request_log_capture, model_log_capture
+    ):
+        """M2M changes triggered inside an API request must share the request_id
+        that the middleware minted for that request.
 
-        # Verify log entry structure
-        for entry in log_entries:
-            # Check required fields for model audit logs
-            assert "timestamp" in entry, "Log entry should have timestamp"
-            assert "level" in entry, "Log entry should have level"
-            assert "name" in entry, "Log entry should have name"
-            assert "message" in entry, "Log entry should have message"
-
-            # Check audit-specific fields
-            if entry.get("name") == "audit.model":
-                assert "model" in entry, "Model log should have model field"
-                assert "event_type" in entry, "Model log should have event_type field"
-                assert "instance_id" in entry, "Model log should have instance_id field"
-                assert (
-                    "instance_repr" in entry
-                ), "Model log should have instance_repr field"
-                assert "user_id" in entry, "Model log should have user_id field"
-                assert "user_info" in entry, "Model log should have user_info field"
-                assert "extra" in entry, "Model log should have extra field"
-
-        # Verify we have the expected event types
-        event_types = [
-            entry.get("event_type")
-            for entry in log_entries
-            if entry.get("name") == "audit.model"
-        ]
-        expected_events = ["PRE_CREATE", "CREATE", "UPDATE"]
-
-        for expected_event in expected_events:
-            assert (
-                expected_event in event_types
-            ), f"Should have {expected_event} event in logs"
-
-        # Verify model names
-        models = [
-            entry.get("model")
-            for entry in log_entries
-            if entry.get("name") == "audit.model"
-        ]
-        assert "Author" in models, "Should have Author model logs"
-        assert "Book" in models, "Should have Book model logs"
-
-        # Verify instance_repr contains expected data
-        author_logs = [
-            entry
-            for entry in log_entries
-            if entry.get("model") == "Author" and entry.get("event_type") == "CREATE"
-        ]
-        assert len(author_logs) > 0, "Should have Author creation logs"
-
-        # Find our specific test author in the logs
-        test_author_log = None
-        for log in author_logs:
-            instance_repr = log.get("instance_repr", {})
-            if instance_repr.get("name") == "Log Content Test Author":
-                test_author_log = log
-                break
-
-        assert (
-            test_author_log is not None
-        ), "Should find our specific test author in logs"
-        instance_repr = test_author_log.get("instance_repr", {})
-        assert (
-            instance_repr.get("name") == "Log Content Test Author"
-        ), "Instance repr should contain correct author name"
-        assert (
-            instance_repr.get("experience") == "Testing log file contents"
-        ), "Instance repr should contain correct experience"
-
-    def test_api_log_file_contents(self):
-        """Test that API log files contain properly structured JSON with expected fields"""
+        Without an active request the M2M signal still fires but request_id is
+        empty — this test verifies the thread-local is properly read when the
+        change happens within the request lifecycle.
+        """
         client = APIClient()
 
-        # Create test data
-        author = Author.objects.create(
-            name="API Log Content Test Author",
-            experience="Testing API log file contents",
-        )
+        primary = Author.objects.create(name="Primary", experience="Lead")
+        co = Author.objects.create(name="Co-author", experience="Support")
+        book = Book.objects.create(title="Collaborative Work", author=primary)
 
-        # Make various API requests
-        response = client.get("/api/authors/")
+        model_log_capture.clear()
+        request_log_capture.clear()
+
+        response = client.post(
+            f"/api/books/{book.pk}/add_co_author/",
+            {"co_author_id": co.pk},
+            format="json",
+        )
         assert response.status_code == status.HTTP_200_OK
 
-        new_author_data = {"name": "New API Author", "experience": "Created via API"}
-        response = client.post("/api/authors/", new_author_data, format="json")
-        assert response.status_code == status.HTTP_201_CREATED
+        api_records = request_log_capture.by_level("API")
+        m2m_records = model_log_capture.by_event_type("M2M")
 
-        # Force flush of all loggers
-        import logging
+        assert api_records, "No API log captured for the add_co_author request"
+        assert m2m_records, "No M2M audit log captured"
 
-        for handler in logging.getLogger("audit.request").handlers:
-            handler.flush()
+        api_request_id = api_records[0].request_id
+        m2m_request_id = m2m_records[0].request_id
 
-        # Check api.jsonl file structure
-        api_file = self.audit_dir / "api.jsonl"
-        assert api_file.exists(), "api.jsonl file should exist"
-
-        log_entries = []
-        with open(api_file, "r") as f:
-            for line in f:
-                if line.strip():
-                    log_entries.append(json.loads(line))
-
-        assert len(log_entries) > 0, "Should have at least one API log entry"
-
-        # Verify log entry structure
-        for entry in log_entries:
-            # Check required fields for API audit logs
-            assert "timestamp" in entry, "API log entry should have timestamp"
-            assert "level" in entry, "API log entry should have level"
-            assert "name" in entry, "API log entry should have name"
-            assert "message" in entry, "API log entry should have message"
-
-            # Check API-specific fields
-            if entry.get("name") == "audit.request":
-                assert "service_name" in entry, "API log should have service_name field"
-                assert "request_type" in entry, "API log should have request_type field"
-                assert "protocol" in entry, "API log should have protocol field"
-                assert "user_id" in entry, "API log should have user_id field"
-                assert "user_info" in entry, "API log should have user_info field"
-                assert "request_repr" in entry, "API log should have request_repr field"
-                assert (
-                    "response_repr" in entry
-                ), "API log should have response_repr field"
-                assert (
-                    "error_message" in entry
-                ), "API log should have error_message field"
-                assert (
-                    "execution_time" in entry
-                ), "API log should have execution_time field"
-
-        # Verify we have the expected HTTP methods
-        api_logs = [
-            entry for entry in log_entries if entry.get("name") == "audit.request"
-        ]
-        methods = [entry.get("request_repr", {}).get("method") for entry in api_logs]
-
-        assert "GET" in methods, "Should have GET request logs"
-        assert "POST" in methods, "Should have POST request logs"
-
-        # Verify request_repr structure
-        get_logs = [
-            entry
-            for entry in api_logs
-            if entry.get("request_repr", {}).get("method") == "GET"
-        ]
-        assert len(get_logs) > 0, "Should have GET request logs"
-
-        get_log = get_logs[0]
-        request_repr = get_log.get("request_repr", {})
-        assert "method" in request_repr, "Request repr should have method"
-        assert "path" in request_repr, "Request repr should have path"
-        assert "query_params" in request_repr, "Request repr should have query_params"
-        assert "headers" in request_repr, "Request repr should have headers"
-
-        # Verify response_repr structure
-        response_repr = get_log.get("response_repr", {})
-        assert "headers" in response_repr, "Response repr should have headers"
-
-        # Verify execution_time is a number
-        assert isinstance(
-            get_log.get("execution_time"), (int, float)
-        ), "Execution time should be a number"
-        assert (
-            get_log.get("execution_time") >= 0
-        ), "Execution time should be non-negative"
+        assert api_request_id, "API request_id must be non-empty"
+        assert m2m_request_id, (
+            "M2M request_id is empty — the thread-local was not read during M2M signal handling"
+        )
+        assert api_request_id == m2m_request_id, (
+            f"request_id mismatch: api={api_request_id!r}, m2m={m2m_request_id!r}"
+        )

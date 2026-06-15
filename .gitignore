@@ -141,4 +141,5 @@ Thumbs.db
 db_test.sqlite3
 .serena/
 uv.lock
+tests/audit/
 

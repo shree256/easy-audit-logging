@@ -102,9 +102,6 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "json": {
-            "()": "activity_audit.formatters.JsonFormatter",
-        },
         "audit": {
             "()": "activity_audit.formatters.AuditFormatter",
         },
