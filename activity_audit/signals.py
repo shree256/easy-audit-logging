@@ -256,23 +256,22 @@ def patch_model_event(model_class: type[models.Model]) -> None:
                 instance: models.Model,
                 action: str,
                 pk_set: set,
+                _field_name: str = field.name,
                 **kwargs: Any,
             ) -> None:
                 if action not in ["post_add", "post_remove", "post_clear"]:
                     return
-
-                field_name = kwargs.get("model", sender).__name__.lower()
-                instance_repr = instance_to_dict(instance)
 
                 push_log(
                     f"M2M {action} event by {model_class.__name__} (id: {instance.pk})",
                     model_class.__name__,
                     EVENT_TYPES[5],
                     str(instance.pk),
-                    instance_repr,
+                    {"id": str(instance.pk)},
                     {
-                        "field_name": field_name,
-                        "related_ids": list(map(str, pk_set)) if pk_set else None,
+                        "action": action,
+                        "field_name": _field_name,
+                        "related_ids": list(map(str, pk_set)) if pk_set else [],
                     },
                 )
 
