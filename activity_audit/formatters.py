@@ -7,6 +7,7 @@ import uuid
 from .constants import LogType
 from .middleware import get_request_id
 
+
 def _json_default(obj):
     """
     Serializer for non-JSON-native types.
@@ -32,7 +33,11 @@ def _json_default(obj):
 
 
 class AppFormatter(logging.Formatter):
-    def __init__(self, log_type: str = LogType.APP, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(
+        self,
+        log_type: str = LogType.APP,
+        timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f",
+    ):
         super().__init__()
         self.log_type = log_type
         self.timestamp_format = timestamp_format
@@ -66,7 +71,11 @@ class AppFormatter(logging.Formatter):
 class APIFormatter(logging.Formatter):
     """Custom formatter for audit logs that ensures consistent JSON formatting."""
 
-    def __init__(self, log_type: str = LogType.API, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(
+        self,
+        log_type: str = LogType.API,
+        timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f",
+    ):
         super().__init__()
         self.log_type = log_type
         self.timestamp_format = timestamp_format
@@ -103,7 +112,11 @@ class APIFormatter(logging.Formatter):
 
 
 class AuditFormatter(logging.Formatter):
-    def __init__(self, log_type: str = LogType.AUDIT, timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"):
+    def __init__(
+        self,
+        log_type: str = LogType.AUDIT,
+        timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f",
+    ):
         super().__init__()
         self.log_type = log_type
         self.timestamp_format = timestamp_format

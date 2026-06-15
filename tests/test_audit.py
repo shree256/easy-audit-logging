@@ -12,11 +12,11 @@ import json
 import logging
 
 import pytest
+
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from tests.publications.models import Author, Book
-
 
 # ---------------------------------------------------------------------------
 # 1. Request / response logging
@@ -305,7 +305,12 @@ class TestFormatterConsoleOutput:
             request_id="req-xyz",
             user_id="u-2",
             user_info={"email": "bob@example.com"},
-            request_repr={"method": "GET", "path": "/api/test/", "headers": {}, "query_params": {}},
+            request_repr={
+                "method": "GET",
+                "path": "/api/test/",
+                "headers": {},
+                "query_params": {},
+            },
             response_repr={"headers": {}, "body": []},
             error_message=None,
             execution_time=0.045,
@@ -361,7 +366,7 @@ class TestFormatterConsoleOutput:
     def test_app_formatter_includes_request_id_from_thread_local(self):
         """AppFormatter pulls request_id from thread-local when not on the record."""
         from activity_audit.formatters import AppFormatter
-        from activity_audit.middleware import set_request_id, clear_request
+        from activity_audit.middleware import clear_request, set_request_id
 
         set_request_id("thread-local-id")
         try:
@@ -374,16 +379,39 @@ class TestFormatterConsoleOutput:
 
     def test_formatter_output_is_valid_json(self):
         """All formatters produce well-formed JSON (no trailing garbage)."""
-        from activity_audit.formatters import AuditFormatter, APIFormatter, AppFormatter
+        from activity_audit.formatters import APIFormatter, AppFormatter, AuditFormatter
 
         cases = [
-            (AuditFormatter(), _make_record("audit.model", model="X", event_type="CREATE",
-                                            request_id="", instance_id="1",
-                                            instance_repr={}, user_id="", user_info={}, extra={})),
-            (APIFormatter(), _make_record("audit.request", service_name="", request_type="",
-                                          protocol="", request_id="", user_id="", user_info={},
-                                          request_repr={}, response_repr={},
-                                          error_message=None, execution_time=0)),
+            (
+                AuditFormatter(),
+                _make_record(
+                    "audit.model",
+                    model="X",
+                    event_type="CREATE",
+                    request_id="",
+                    instance_id="1",
+                    instance_repr={},
+                    user_id="",
+                    user_info={},
+                    extra={},
+                ),
+            ),
+            (
+                APIFormatter(),
+                _make_record(
+                    "audit.request",
+                    service_name="",
+                    request_type="",
+                    protocol="",
+                    request_id="",
+                    user_id="",
+                    user_info={},
+                    request_repr={},
+                    response_repr={},
+                    error_message=None,
+                    execution_time=0,
+                ),
+            ),
             (AppFormatter(), _make_record("app")),
         ]
 
@@ -396,7 +424,9 @@ class TestFormatterConsoleOutput:
             try:
                 json.loads(raw)
             except json.JSONDecodeError as exc:
-                pytest.fail(f"{formatter.__class__.__name__} produced invalid JSON: {exc}\n{raw}")
+                pytest.fail(
+                    f"{formatter.__class__.__name__} produced invalid JSON: {exc}\n{raw}"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -432,19 +462,21 @@ class TestRequestIdPropagation:
 
         assert api_records, "No API log captured"
         assert audit_records, "No AUDIT CREATE log captured"
-        assert app_outputs, "No app log captured — check perform_create logs via app.publications"
+        assert (
+            app_outputs
+        ), "No app log captured — check perform_create logs via app.publications"
 
         api_request_id = api_records[0].request_id
         audit_request_id = audit_records[0].request_id
         app_request_id = app_outputs[0]["request_id"]
 
         assert api_request_id, "API request_id must be non-empty"
-        assert api_request_id == audit_request_id, (
-            f"api ({api_request_id!r}) != audit ({audit_request_id!r})"
-        )
-        assert api_request_id == app_request_id, (
-            f"api ({api_request_id!r}) != app ({app_request_id!r})"
-        )
+        assert (
+            api_request_id == audit_request_id
+        ), f"api ({api_request_id!r}) != audit ({audit_request_id!r})"
+        assert (
+            api_request_id == app_request_id
+        ), f"api ({api_request_id!r}) != app ({app_request_id!r})"
 
     def test_each_request_gets_a_unique_request_id(self, request_log_capture):
         client = APIClient()
@@ -456,9 +488,9 @@ class TestRequestIdPropagation:
 
         first_id = api_records[0].request_id
         second_id = api_records[1].request_id
-        assert first_id != second_id, (
-            "Different requests must receive different request_ids"
-        )
+        assert (
+            first_id != second_id
+        ), "Different requests must receive different request_ids"
 
     def test_request_id_is_a_valid_uuid(self, request_log_capture):
         import uuid
@@ -471,9 +503,7 @@ class TestRequestIdPropagation:
         try:
             uuid.UUID(records[0].request_id)
         except ValueError:
-            pytest.fail(
-                f"request_id {records[0].request_id!r} is not a valid UUID"
-            )
+            pytest.fail(f"request_id {records[0].request_id!r} is not a valid UUID")
 
     def test_m2m_log_carries_same_request_id_as_api_log(
         self, request_log_capture, model_log_capture
@@ -511,9 +541,7 @@ class TestRequestIdPropagation:
         m2m_request_id = m2m_records[0].request_id
 
         assert api_request_id, "API request_id must be non-empty"
-        assert m2m_request_id, (
-            "M2M request_id is empty — the thread-local was not read during M2M signal handling"
-        )
-        assert api_request_id == m2m_request_id, (
-            f"request_id mismatch: api={api_request_id!r}, m2m={m2m_request_id!r}"
-        )
+        assert m2m_request_id, "M2M request_id is empty — the thread-local was not read during M2M signal handling"
+        assert (
+            api_request_id == m2m_request_id
+        ), f"request_id mismatch: api={api_request_id!r}, m2m={m2m_request_id!r}"

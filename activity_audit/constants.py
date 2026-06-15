@@ -18,4 +18,3 @@ REQUEST_TYPES = [
     "internal",
     "external",
 ]
-
