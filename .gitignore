@@ -140,4 +140,6 @@ Thumbs.db
 # Project specific
 db_test.sqlite3
 .serena/
+uv.lock
+tests/audit/
 

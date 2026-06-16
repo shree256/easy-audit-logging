@@ -3,7 +3,7 @@ import queue
 
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
-from .formatters import APIFormatter, AuditFormatter, AppFormatter, LoginFormatter
+from .formatters import APIFormatter, AppFormatter, AuditFormatter, LoginFormatter
 from .middleware import get_request_id
 
 
@@ -170,6 +170,8 @@ class AsyncJsonHandler(QueueHandler):
         self._listener.start()
 
     def prepare(self, record):
+        # Capture request_id in the calling thread before the record is queued,
+        # since thread-locals are not accessible from the QueueListener thread.
         record = super().prepare(record)
         record.request_id = get_request_id() or ""
         return record

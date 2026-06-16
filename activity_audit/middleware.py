@@ -126,18 +126,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self.log_data = {
-            "service_name": SERVICE_NAME,
-            "request_type": REQUEST_TYPES[0],
-            "protocol": None,
-            "request_id": "",
-            "user_id": "",
-            "user_info": {},
-            "request_repr": {},
-            "response_repr": {},
-            "error_message": None,
-            "execution_time": 0,
-        }
 
         if iscoroutinefunction(self.get_response):
             markcoroutinefunction(self)
@@ -152,6 +140,18 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         if not should_log_url(request.path):
             return self.get_response(request)
 
+        log_data = {
+            "service_name": SERVICE_NAME,
+            "request_type": REQUEST_TYPES[0],
+            "protocol": None,
+            "request_id": "",
+            "user_id": "",
+            "user_info": {},
+            "request_repr": {},
+            "response_repr": {},
+            "error_message": None,
+            "execution_time": 0,
+        }
         start_time = time.time()
 
         # Log request
@@ -175,8 +175,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         # Capture user details AFTER authentication has happened
         user_id, user_info = get_user_details()
-        self.log_data["user_id"] = user_id
-        self.log_data["user_info"] = user_info
+        log_data["user_id"] = user_id
+        log_data["user_info"] = user_info
 
         # TODO: Find way to add status code to response_data
 
@@ -196,13 +196,13 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             except UnicodeDecodeError:
                 response_data["body"] = "Binary content"
 
-        self.log_data["execution_time"] = end_time - start_time
-        self.log_data["protocol"] = "https" if request.is_secure() else "http"
-        self.log_data["request_id"] = request_id
-        self.log_data["request_repr"] = request_data
-        self.log_data["response_repr"] = response_data
+        log_data["execution_time"] = end_time - start_time
+        log_data["protocol"] = "https" if request.is_secure() else "http"
+        log_data["request_id"] = request_id
+        log_data["request_repr"] = request_data
+        log_data["response_repr"] = response_data
 
-        logger.api("Audit Internal Request", extra=self.log_data)
+        logger.api("Audit Internal Request", extra=log_data)
 
         clear_request()
 
@@ -216,6 +216,18 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         if not should_log_url(request.path):
             return await self.get_response(request)
 
+        log_data = {
+            "service_name": SERVICE_NAME,
+            "request_type": REQUEST_TYPES[0],
+            "protocol": None,
+            "request_id": "",
+            "user_id": "",
+            "user_info": {},
+            "request_repr": {},
+            "response_repr": {},
+            "error_message": None,
+            "execution_time": 0,
+        }
         start_time = time.time()
 
         # Log request
@@ -241,8 +253,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         user_id, user_info = await sync_to_async(
             get_user_details, thread_sensitive=True
         )()
-        self.log_data["user_id"] = user_id
-        self.log_data["user_info"] = user_info
+        log_data["user_id"] = user_id
+        log_data["user_info"] = user_info
 
         # TODO: Find way to add status code to response_data
 
@@ -262,13 +274,13 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             except UnicodeDecodeError:
                 response_data["body"] = "Binary content"
 
-        self.log_data["execution_time"] = end_time - start_time
-        self.log_data["protocol"] = "https" if request.is_secure() else "http"
-        self.log_data["request_id"] = request_id
-        self.log_data["request_repr"] = request_data
-        self.log_data["response_repr"] = response_data
+        log_data["execution_time"] = end_time - start_time
+        log_data["protocol"] = "https" if request.is_secure() else "http"
+        log_data["request_id"] = request_id
+        log_data["request_repr"] = request_data
+        log_data["response_repr"] = response_data
 
-        logger.api("Audit Internal Request", extra=self.log_data)
+        logger.api("Audit Internal Request", extra=log_data)
 
         clear_request()
 
