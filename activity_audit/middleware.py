@@ -13,6 +13,8 @@ from asgiref.sync import (
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+import structlog.contextvars as ctx
+
 from .constants import REQUEST_TYPES
 from .settings import REGISTERED_URLS, SERVICE_NAME, UNREGISTERED_URLS
 from .structlog_support import get_logger
@@ -140,6 +142,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         set_current_request(request)
         request_id = str(uuid.uuid4())
         set_request_id(request_id)
+        ctx.clear_contextvars()
+        ctx.bind_contextvars(request_id=request_id)
 
         if not should_log_url(request.path):
             return self.get_response(request)
@@ -148,9 +152,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             "service_name": SERVICE_NAME,
             "request_type": REQUEST_TYPES[0],
             "protocol": None,
-            "request_id": "",
-            "user_id": "",
-            "user_info": {},
             "request_repr": {},
             "response_repr": {},
             "error_message": None,
@@ -179,8 +180,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         # Capture user details AFTER authentication has happened
         user_id, user_info = get_user_details()
-        log_data["user_id"] = user_id
-        log_data["user_info"] = user_info
+        ctx.bind_contextvars(user_id=user_id, user_info=user_info)
 
         # TODO: Find way to add status code to response_data
 
@@ -202,7 +202,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         log_data["execution_time"] = end_time - start_time
         log_data["protocol"] = "https" if request.is_secure() else "http"
-        log_data["request_id"] = request_id
         log_data["request_repr"] = request_data
         log_data["response_repr"] = response_data
 
@@ -210,6 +209,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         bound.api("Audit Internal Request")
 
         clear_request()
+        ctx.clear_contextvars()
 
         return response
 
@@ -217,6 +217,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         set_current_request(request)
         request_id = str(uuid.uuid4())
         set_request_id(request_id)
+        ctx.clear_contextvars()
+        ctx.bind_contextvars(request_id=request_id)
 
         if not should_log_url(request.path):
             return await self.get_response(request)
@@ -225,9 +227,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             "service_name": SERVICE_NAME,
             "request_type": REQUEST_TYPES[0],
             "protocol": None,
-            "request_id": "",
-            "user_id": "",
-            "user_info": {},
             "request_repr": {},
             "response_repr": {},
             "error_message": None,
@@ -258,8 +257,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         user_id, user_info = await sync_to_async(
             get_user_details, thread_sensitive=True
         )()
-        log_data["user_id"] = user_id
-        log_data["user_info"] = user_info
+        ctx.bind_contextvars(user_id=user_id, user_info=user_info)
 
         # TODO: Find way to add status code to response_data
 
@@ -281,7 +279,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         log_data["execution_time"] = end_time - start_time
         log_data["protocol"] = "https" if request.is_secure() else "http"
-        log_data["request_id"] = request_id
         log_data["request_repr"] = request_data
         log_data["response_repr"] = response_data
 
@@ -289,5 +286,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         bound.api("Audit Internal Request")
 
         clear_request()
+        ctx.clear_contextvars()
 
         return response

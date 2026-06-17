@@ -1,4 +1,5 @@
 import inspect
+import structlog.contextvars as ctx
 
 from functools import wraps
 from typing import Any, List
@@ -14,7 +15,6 @@ from django.db.models.signals import (
 from django.dispatch import receiver
 from django.forms.models import model_to_dict
 
-from activity_audit.middleware import get_request_id, get_user_details
 from activity_audit.structlog_support import get_logger
 from activity_audit.unregistered import UNREGISTERED_CLASSES
 
@@ -129,17 +129,16 @@ def push_log(
     extra: dict = {},
 ) -> None:
     try:
-        user_id, user_info = get_user_details()
-
-        # Snapshot all context now — on_commit fires after the transaction commits
-        # and the middleware may have already cleared thread-locals by then.
+        # Snapshot contextvars now — on_commit fires after the transaction commits
+        # and the middleware may have already cleared contextvars by then.
+        ctx_vars = ctx.get_contextvars()
         bound = _log.bind(
             model=model,
             instance_id=str(instance_id),
             event_type=event_type,
-            request_id=get_request_id() or "",
-            user_id=user_id,
-            user_info=user_info,
+            request_id=ctx_vars.get("request_id", ""),
+            user_id=ctx_vars.get("user_id", ""),
+            user_info=ctx_vars.get("user_info", {}),
             instance_repr=instance_repr,
             extra=extra,
         )
