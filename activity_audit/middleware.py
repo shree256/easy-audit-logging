@@ -6,7 +6,11 @@ import time
 import uuid
 
 from asgiref.local import Local
-from asgiref.sync import iscoroutinefunction, markcoroutinefunction, sync_to_async
+from asgiref.sync import (
+    iscoroutinefunction,
+    markcoroutinefunction,
+    sync_to_async,
+)
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 

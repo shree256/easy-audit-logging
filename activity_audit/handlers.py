@@ -3,7 +3,12 @@ import queue
 
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
-from .formatters import APIFormatter, AppFormatter, AuditFormatter, LoginFormatter
+from .formatters import (
+    APIFormatter,
+    AppFormatter,
+    AuditFormatter,
+    LoginFormatter,
+)
 from .middleware import get_request_id
 
 

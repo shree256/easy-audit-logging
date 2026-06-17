@@ -1,19 +1,19 @@
 import datetime
 import decimal
-import json
 import logging
 import sys
 import uuid
 
 import structlog
+
 from structlog.processors import CallsiteParameter
 
 from activity_audit.constants import LogType
 
-
 # ---------------------------------------------------------------------------
 # JSON serializer — matches _json_default in formatters.py
 # ---------------------------------------------------------------------------
+
 
 def _json_default(obj):
     if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
@@ -33,9 +33,12 @@ def _json_default(obj):
 # Custom processors — match the existing formatter output field-for-field
 # ---------------------------------------------------------------------------
 
+
 def _audit_timestamp(logger, method, event_dict):
     """Timestamp in the same format as the existing formatters: 'YYYY-MM-DD HH:MM:SS.mmm'."""
-    event_dict["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    event_dict["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[
+        :-3
+    ]
     return event_dict
 
 
@@ -77,6 +80,7 @@ def _add_log_type(logger, method, event_dict):
 # Bound logger — adds the three custom audit levels
 # ---------------------------------------------------------------------------
 
+
 class AuditBoundLogger(structlog.stdlib.BoundLogger):
     """Extends structlog BoundLogger with AUDIT, API, and LOGIN log levels."""
 
@@ -103,6 +107,7 @@ _console_handler.setFormatter(logging.Formatter("%(message)s"))
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def configure() -> None:
     """
@@ -133,11 +138,13 @@ def configure() -> None:
             _uppercase_level,
             _rename_structlog_keys,
             _add_log_type,
-            structlog.processors.CallsiteParameterAdder([
-                CallsiteParameter.FILENAME,
-                CallsiteParameter.LINENO,
-                CallsiteParameter.FUNC_NAME,
-            ]),
+            structlog.processors.CallsiteParameterAdder(
+                [
+                    CallsiteParameter.FILENAME,
+                    CallsiteParameter.LINENO,
+                    CallsiteParameter.FUNC_NAME,
+                ]
+            ),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.ExceptionRenderer(),
             structlog.processors.JSONRenderer(default=_json_default),
