@@ -39,14 +39,6 @@ def set_current_request(request):
     _thread_locals.request = request
 
 
-def get_request_id():
-    return getattr(_thread_locals, "request_id", None)
-
-
-def set_request_id(request_id):
-    _thread_locals.request_id = request_id
-
-
 def get_current_user():
     request = get_current_request()
     if request:
@@ -83,8 +75,6 @@ def get_user_details():
 def clear_request():
     with contextlib.suppress(AttributeError):
         del _thread_locals.request
-    with contextlib.suppress(AttributeError):
-        del _thread_locals.request_id
 
 
 def should_log_url(url):
@@ -141,7 +131,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             return self.__acall__(request)
         set_current_request(request)
         request_id = str(uuid.uuid4())
-        set_request_id(request_id)
         ctx.clear_contextvars()
         ctx.bind_contextvars(request_id=request_id)
 
@@ -216,7 +205,6 @@ class AuditLoggingMiddleware(MiddlewareMixin):
     async def __acall__(self, request):
         set_current_request(request)
         request_id = str(uuid.uuid4())
-        set_request_id(request_id)
         ctx.clear_contextvars()
         ctx.bind_contextvars(request_id=request_id)
 

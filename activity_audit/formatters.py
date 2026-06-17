@@ -4,8 +4,9 @@ import json
 import logging
 import uuid
 
+import structlog.contextvars as ctx
+
 from .constants import LogType
-from .middleware import get_request_id
 
 
 def _json_default(obj):
@@ -55,7 +56,7 @@ class AppFormatter(logging.Formatter):
             "path": record.pathname,
             "module": record.module,
             "function": record.funcName,
-            "request_id": getattr(record, "request_id", None) or get_request_id() or "",
+            "request_id": getattr(record, "request_id", None) or ctx.get_contextvars().get("request_id", ""),
             "message": record.getMessage(),
             "exception": "",
             "log_type": self.log_type,

@@ -9,7 +9,7 @@ from .formatters import (
     AuditFormatter,
     LoginFormatter,
 )
-from .middleware import get_request_id
+import structlog.contextvars as ctx
 
 
 class BaseAuditHandler(RotatingFileHandler):
@@ -115,10 +115,10 @@ class AsyncBaseAuditHandler(QueueHandler):
         self._listener.start()
 
     def prepare(self, record):
-        # Capture request_id in the calling thread before the record is queued,
-        # since thread-locals are not accessible from the QueueListener thread.
+        # Snapshot request_id from contextvars before the record is queued —
+        # the QueueListener thread runs in a different context.
         record = super().prepare(record)
-        record.request_id = get_request_id() or ""
+        record.request_id = ctx.get_contextvars().get("request_id", "")
         return record
 
     def close(self):
@@ -175,10 +175,10 @@ class AsyncJsonHandler(QueueHandler):
         self._listener.start()
 
     def prepare(self, record):
-        # Capture request_id in the calling thread before the record is queued,
-        # since thread-locals are not accessible from the QueueListener thread.
+        # Snapshot request_id from contextvars before the record is queued —
+        # the QueueListener thread runs in a different context.
         record = super().prepare(record)
-        record.request_id = get_request_id() or ""
+        record.request_id = ctx.get_contextvars().get("request_id", "")
         return record
 
     def close(self):
