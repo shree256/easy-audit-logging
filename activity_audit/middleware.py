@@ -1,6 +1,5 @@
 import contextlib
 import json
-import logging
 import re
 import time
 import uuid
@@ -16,8 +15,9 @@ from django.utils.deprecation import MiddlewareMixin
 
 from .constants import REQUEST_TYPES
 from .settings import REGISTERED_URLS, SERVICE_NAME, UNREGISTERED_URLS
+from .structlog_support import get_logger
 
-logger = logging.getLogger("audit.request")
+_log = get_logger("audit.request")
 
 _thread_locals = Local()
 
@@ -206,7 +206,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         log_data["request_repr"] = request_data
         log_data["response_repr"] = response_data
 
-        logger.api("Audit Internal Request", extra=log_data)
+        bound = _log.bind(**log_data)
+        bound.api("Audit Internal Request")
 
         clear_request()
 
@@ -284,7 +285,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         log_data["request_repr"] = request_data
         log_data["response_repr"] = response_data
 
-        logger.api("Audit Internal Request", extra=log_data)
+        bound = _log.bind(**log_data)
+        bound.api("Audit Internal Request")
 
         clear_request()
 
