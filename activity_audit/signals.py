@@ -1,5 +1,4 @@
 import inspect
-import logging
 
 from functools import wraps
 from typing import Any, List
@@ -16,9 +15,10 @@ from django.dispatch import receiver
 from django.forms.models import model_to_dict
 
 from activity_audit.middleware import get_request_id, get_user_details
+from activity_audit.structlog_support import get_logger
 from activity_audit.unregistered import UNREGISTERED_CLASSES
 
-logger = logging.getLogger("audit.model")
+_log = get_logger("audit.model")
 
 EVENT_TYPES = [
     "CREATE",
@@ -130,26 +130,29 @@ def push_log(
 ) -> None:
     try:
         user_id, user_info = get_user_details()
-        payload: dict = {
-            "model": model,
-            "instance_id": str(instance_id),
-            "event_type": event_type,
-            "request_id": get_request_id() or "",
-            "user_id": user_id,
-            "user_info": user_info,
-            "instance_repr": instance_repr,
-            "extra": extra,
-        }
+
+        # Snapshot all context now — on_commit fires after the transaction commits
+        # and the middleware may have already cleared thread-locals by then.
+        bound = _log.bind(
+            model=model,
+            instance_id=str(instance_id),
+            event_type=event_type,
+            request_id=get_request_id() or "",
+            user_id=user_id,
+            user_info=user_info,
+            instance_repr=instance_repr,
+            extra=extra,
+        )
 
         def safe_audit_log():
             try:
-                logger.audit(message, extra=payload)
+                bound.audit(message)
             except Exception as e:
-                logger.error(f"Failed to write audit log: {e}")
+                _log.error("Failed to write audit log", error=str(e))
 
         transaction.on_commit(safe_audit_log)
     except Exception as e:
-        logger.error(f"Failed to prepare audit log: {e}")
+        _log.error("Failed to prepare audit log", error=str(e))
 
 
 def instance_to_dict(instance: models.Model) -> dict:

@@ -7,16 +7,9 @@ class AuditLoggingConfig(AppConfig):
     verbose_name = "Django Activity Audit"
 
     def ready(self):
-        # Import and register custom log levels
-        from . import logger_levels
+        from . import logger_levels, structlog_support
 
-        # Force registration of custom levels
-        logger_levels.AUDIT
-        logger_levels.API
-        logger_levels.LOGIN
+        structlog_support.configure()
 
-        # Populate UNREGISTERED_CLASSES (requires app registry to be ready)
         from . import unregistered  # noqa
-
-        # Initialize signals
         from . import signals  # noqa
