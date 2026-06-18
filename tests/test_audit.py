@@ -363,19 +363,19 @@ class TestFormatterConsoleOutput:
         ):
             assert field in output, f"AppFormatter missing field in output: {field}"
 
-    def test_app_formatter_includes_request_id_from_thread_local(self):
-        """AppFormatter pulls request_id from thread-local when not on the record."""
+    def test_app_formatter_includes_request_id_from_contextvars(self):
+        """AppFormatter pulls request_id from contextvars when not on the record."""
+        import structlog.contextvars as ctx
         from activity_audit.formatters import AppFormatter
-        from activity_audit.middleware import clear_request, set_request_id
 
-        set_request_id("thread-local-id")
+        ctx.bind_contextvars(request_id="contextvar-id")
         try:
             formatter = AppFormatter()
             record = _make_record("app.general")
             output = _emit_to_stream(formatter, record)
-            assert output["request_id"] == "thread-local-id"
+            assert output["request_id"] == "contextvar-id"
         finally:
-            clear_request()
+            ctx.clear_contextvars()
 
     def test_formatter_output_is_valid_json(self):
         """All formatters produce well-formed JSON (no trailing garbage)."""
@@ -437,12 +437,12 @@ class TestFormatterConsoleOutput:
 @pytest.mark.django_db(transaction=True)
 class TestRequestIdPropagation:
     """A single UUID request_id is minted per request and appears identically
-    in the app log (AppFormatter reads thread-local), the api log (middleware
-    sets it explicitly in extra), and the audit model log (signal reads
-    thread-local via get_request_id()).
+    in the app log (AppFormatter reads contextvars), the api log (middleware
+    binds it via merge_contextvars), and the audit model log (signal snapshots
+    it from contextvars in push_log).
 
-    The app_log_capture fixture formats records at emit time so that the
-    thread-local is still populated when request_id is resolved.
+    The app_log_capture fixture formats records at emit time so that
+    contextvars are still populated when request_id is resolved.
     """
 
     def test_request_id_is_identical_across_all_three_loggers(
