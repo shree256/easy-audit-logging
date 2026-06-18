@@ -1,0 +1,121 @@
+import datetime
+import decimal
+import sys
+
+import orjson
+import structlog
+
+from activity_audit.constants import LogType
+from structlog.processors import CallsiteParameter
+
+
+def _orjson_dumps(*args, **kwargs):
+    return orjson.dumps(*args, **kwargs).decode()
+
+
+def _json_default(obj):
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    if isinstance(obj, set):
+        return list(obj)
+    if isinstance(obj, bytes):
+        return obj.decode("utf-8", errors="replace")
+    return str(obj)
+
+
+def _audit_timestamp(logger, method, event_dict):
+    """Timestamp in the same format as the existing formatters: 'YYYY-MM-DD HH:MM:SS.mmm'."""
+    event_dict["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    return event_dict
+
+
+def _uppercase_level(logger, method, event_dict):
+    """Uppercase level name to match AUDIT / API / LOGIN convention."""
+    if "level" in event_dict:
+        event_dict["level"] = event_dict["level"].upper()
+    return event_dict
+
+
+def _rename_structlog_keys(logger, method, event_dict):
+    """
+    Rename structlog default keys to match the existing JSON field names:
+      event  → message
+      logger → name
+    """
+    if "event" in event_dict:
+        event_dict["message"] = event_dict.pop("event")
+    if "logger" in event_dict:
+        event_dict["name"] = event_dict.pop("logger")
+    return event_dict
+
+
+def _detect_process_log_type() -> str:
+    argv = " ".join(sys.argv)
+    if "beat" in argv:
+        return LogType.CELERYBEAT
+    if "worker" in argv or "celery" in argv:
+        return LogType.CELERYWORKER
+    return LogType.AUDIT
+
+
+_PROCESS_LOG_TYPE = _detect_process_log_type()
+
+_LOG_TYPE_MAP = {
+    "audit.model": _PROCESS_LOG_TYPE,
+    "audit.request": LogType.API,
+    "audit.login": LogType.LOGIN,
+}
+
+
+def _add_log_type(logger, method, event_dict):
+    """Add log_type based on logger name; all celery.* loggers get the process type."""
+    name = event_dict.get("name", "")
+    if name in _LOG_TYPE_MAP:
+        event_dict["log_type"] = _LOG_TYPE_MAP[name]
+    elif name.startswith("celery"):
+        event_dict["log_type"] = _PROCESS_LOG_TYPE
+    else:
+        event_dict["log_type"] = LogType.APP
+    return event_dict
+
+
+_STANDARD_KEYS = frozenset({
+    "timestamp",
+    "level",
+    "name",
+    "message",
+    "log_type",
+    "filename",
+    "func_name",
+    "stack_info",
+    "exception",
+    "_record",
+    "_from_structlog",
+})
+
+
+def _collect_extra(logger, method, event_dict):
+    """Move all caller-supplied kwargs that aren't standard fields into 'extra'."""
+    extra = {k: event_dict.pop(k) for k in list(event_dict) if k not in _STANDARD_KEYS}
+    if extra:
+        event_dict["extra"] = extra
+    return event_dict
+
+
+shared_processors = [
+    structlog.contextvars.merge_contextvars,
+    structlog.stdlib.add_log_level,
+    structlog.stdlib.add_logger_name,
+    _audit_timestamp,
+    _uppercase_level,
+    _rename_structlog_keys,
+    _add_log_type,
+    structlog.processors.CallsiteParameterAdder(
+        [
+            CallsiteParameter.FILENAME,
+            CallsiteParameter.FUNC_NAME,
+        ]
+    ),
+    structlog.processors.StackInfoRenderer(),
+    structlog.processors.ExceptionRenderer(),
+]

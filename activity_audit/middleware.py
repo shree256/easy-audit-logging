@@ -4,6 +4,8 @@ import re
 import time
 import uuid
 
+import structlog.contextvars as ctx
+
 from asgiref.local import Local
 from asgiref.sync import (
     iscoroutinefunction,
@@ -13,11 +15,9 @@ from asgiref.sync import (
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
-import structlog.contextvars as ctx
-
 from .constants import REQUEST_TYPES
 from .settings import REGISTERED_URLS, SERVICE_NAME, UNREGISTERED_URLS
-from .structlog_support import get_logger
+from .config import get_logger
 
 _log = get_logger("audit.request")
 

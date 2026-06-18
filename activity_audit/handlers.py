@@ -3,13 +3,14 @@ import queue
 
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
+import structlog.contextvars as ctx
+
 from .formatters import (
     APIFormatter,
     AppFormatter,
     AuditFormatter,
     LoginFormatter,
 )
-import structlog.contextvars as ctx
 
 
 class BaseAuditHandler(RotatingFileHandler):
