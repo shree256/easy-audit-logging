@@ -93,6 +93,7 @@ _STANDARD_KEYS = frozenset(
         "func_name",
         "stack_info",
         "exception",
+        "request_id",
         "_record",
         "_from_structlog",
     }
@@ -123,4 +124,5 @@ shared_processors = [
     ),
     structlog.processors.StackInfoRenderer(),
     structlog.processors.ExceptionRenderer(),
+    _collect_extra,
 ]
