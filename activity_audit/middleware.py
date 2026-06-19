@@ -15,9 +15,9 @@ from asgiref.sync import (
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from .config import get_logger
 from .constants import REQUEST_TYPES
 from .settings import REGISTERED_URLS, SERVICE_NAME, UNREGISTERED_URLS
-from .config import get_logger
 
 _log = get_logger("audit.request")
 

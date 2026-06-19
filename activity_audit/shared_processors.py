@@ -5,8 +5,9 @@ import sys
 import orjson
 import structlog
 
-from activity_audit.constants import LogType
 from structlog.processors import CallsiteParameter
+
+from activity_audit.constants import LogType
 
 
 def _orjson_dumps(*args, **kwargs):
@@ -25,7 +26,9 @@ def _json_default(obj):
 
 def _audit_timestamp(logger, method, event_dict):
     """Timestamp in the same format as the existing formatters: 'YYYY-MM-DD HH:MM:SS.mmm'."""
-    event_dict["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    event_dict["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[
+        :-3
+    ]
     return event_dict
 
 
@@ -79,19 +82,21 @@ def _add_log_type(logger, method, event_dict):
     return event_dict
 
 
-_STANDARD_KEYS = frozenset({
-    "timestamp",
-    "level",
-    "name",
-    "message",
-    "log_type",
-    "filename",
-    "func_name",
-    "stack_info",
-    "exception",
-    "_record",
-    "_from_structlog",
-})
+_STANDARD_KEYS = frozenset(
+    {
+        "timestamp",
+        "level",
+        "name",
+        "message",
+        "log_type",
+        "filename",
+        "func_name",
+        "stack_info",
+        "exception",
+        "_record",
+        "_from_structlog",
+    }
+)
 
 
 def _collect_extra(logger, method, event_dict):

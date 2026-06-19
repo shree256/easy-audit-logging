@@ -56,7 +56,8 @@ class AppFormatter(logging.Formatter):
             "path": record.pathname,
             "module": record.module,
             "function": record.funcName,
-            "request_id": getattr(record, "request_id", None) or ctx.get_contextvars().get("request_id", ""),
+            "request_id": getattr(record, "request_id", None)
+            or ctx.get_contextvars().get("request_id", ""),
             "message": record.getMessage(),
             "exception": "",
             "log_type": self.log_type,

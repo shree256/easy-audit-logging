@@ -5,8 +5,6 @@ from typing import Any, List
 
 import structlog.contextvars as ctx
 
-from activity_audit.config import get_logger
-from activity_audit.unregistered import UNREGISTERED_CLASSES
 from django.apps import apps
 from django.db import models, transaction
 from django.db.models.signals import (
@@ -17,6 +15,9 @@ from django.db.models.signals import (
 )
 from django.dispatch import receiver
 from django.forms.models import model_to_dict
+
+from activity_audit.config import get_logger
+from activity_audit.unregistered import UNREGISTERED_CLASSES
 
 _log = get_logger("audit.model")
 

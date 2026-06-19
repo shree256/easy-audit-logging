@@ -1,6 +1,10 @@
 import structlog
 
-from activity_audit.shared_processors import _json_default, _orjson_dumps, shared_processors
+from activity_audit.shared_processors import (
+    _json_default,
+    _orjson_dumps,
+    shared_processors,
+)
 
 
 class AuditBoundLogger(structlog.stdlib.BoundLogger):
@@ -26,7 +30,9 @@ def get_stdlib_formatter() -> dict:
         "()": structlog.stdlib.ProcessorFormatter,
         "processors": [
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            structlog.processors.JSONRenderer(serializer=_orjson_dumps, default=_json_default),
+            structlog.processors.JSONRenderer(
+                serializer=_orjson_dumps, default=_json_default
+            ),
         ],
         "foreign_pre_chain": shared_processors,
     }
@@ -46,7 +52,8 @@ def configure() -> None:
     this function and signals.py do not need to change again.
     """
     structlog.configure(
-        processors=shared_processors + [
+        processors=shared_processors
+        + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),

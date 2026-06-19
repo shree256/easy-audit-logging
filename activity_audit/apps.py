@@ -7,10 +7,11 @@ class AuditLoggingConfig(AppConfig):
     verbose_name = "Django Activity Audit"
 
     def ready(self):
-        from . import logger_levels
+        from . import (
+            logger_levels,
+            signals,  # noqa
+            unregistered,  # noqa
+        )
         from .config import configure
 
         configure()
-
-        from . import unregistered  # noqa
-        from . import signals  # noqa
