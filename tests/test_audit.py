@@ -366,6 +366,7 @@ class TestFormatterConsoleOutput:
     def test_app_formatter_includes_request_id_from_contextvars(self):
         """AppFormatter pulls request_id from contextvars when not on the record."""
         import structlog.contextvars as ctx
+
         from activity_audit.formatters import AppFormatter
 
         ctx.bind_contextvars(request_id="contextvar-id")
