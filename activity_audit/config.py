@@ -20,6 +20,22 @@ class AuditBoundLogger(structlog.stdlib.BoundLogger):
         return self._proxy_to_logger("login", event, *args, **kw)
 
 
+def get_plain_formatter() -> dict:
+    """
+    LOGGING formatter dict that routes stdlib loggers through the structlog
+    processor chain but renders as plain text instead of JSON. Use for local
+    development when human-readable output is preferred over structured JSON.
+    """
+    return {
+        "()": structlog.stdlib.ProcessorFormatter,
+        "processors": [
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.dev.ConsoleRenderer(colors=False),
+        ],
+        "foreign_pre_chain": shared_processors,
+    }
+
+
 def get_stdlib_formatter() -> dict:
     """
     LOGGING formatter dict that routes stdlib loggers through the structlog
