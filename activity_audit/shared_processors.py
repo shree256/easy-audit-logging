@@ -96,6 +96,26 @@ _STANDARD_KEYS = frozenset(
         "request_id",
         "_record",
         "_from_structlog",
+        # audit.model fields
+        "model",
+        "event_type",
+        "instance_id",
+        "instance_repr",
+        "user_id",
+        "user_info",
+        "extra",
+        # audit.request fields
+        "service_name",
+        "request_type",
+        "protocol",
+        "request_repr",
+        "response_repr",
+        "error_message",
+        "execution_time",
+        # audit.login fields
+        "event",
+        "success",
+        "error",
     }
 )
 

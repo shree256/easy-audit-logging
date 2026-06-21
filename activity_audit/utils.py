@@ -145,7 +145,7 @@ def push_usage_log(
     """
     import logging
 
-    from .signals import get_user_details
+    from .middleware import get_user_details
 
     logger = logging.getLogger("audit.login")
     user_id, user_info = get_user_details()
