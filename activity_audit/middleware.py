@@ -1,16 +1,15 @@
-import contextlib
 import json
 import re
 import time
 import uuid
 
+from contextvars import ContextVar
+
 import structlog.contextvars as ctx
 
-from asgiref.local import Local
 from asgiref.sync import (
     iscoroutinefunction,
     markcoroutinefunction,
-    sync_to_async,
 )
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
@@ -21,7 +20,7 @@ from .settings import REGISTERED_URLS, SERVICE_NAME, UNREGISTERED_URLS
 
 _log = get_logger("audit.request")
 
-_thread_locals = Local()
+_request_var: ContextVar = ContextVar("current_request", default=None)
 
 
 class MockRequest:
@@ -32,11 +31,11 @@ class MockRequest:
 
 
 def get_current_request():
-    return getattr(_thread_locals, "request", None)
+    return _request_var.get()
 
 
 def set_current_request(request):
-    _thread_locals.request = request
+    _request_var.set(request)
 
 
 def get_current_user():
@@ -47,11 +46,11 @@ def get_current_user():
 
 
 def set_current_user(user):
-    try:
-        _thread_locals.request.user = user
-    except AttributeError:
-        request = MockRequest(user=user)
-        _thread_locals.request = request
+    request = _request_var.get()
+    if request is not None:
+        request.user = user
+    else:
+        _request_var.set(MockRequest(user=user))
 
 
 def get_user_details():
@@ -73,8 +72,7 @@ def get_user_details():
 
 
 def clear_request():
-    with contextlib.suppress(AttributeError):
-        del _thread_locals.request
+    _request_var.set(None)
 
 
 def should_log_url(url):
@@ -242,9 +240,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         end_time = time.time()
 
         # Capture user details AFTER authentication has happened
-        user_id, user_info = await sync_to_async(
-            get_user_details, thread_sensitive=True
-        )()
+        user_id, user_info = get_user_details()
         ctx.bind_contextvars(user_id=user_id, user_info=user_info)
 
         # TODO: Find way to add status code to response_data
