@@ -82,6 +82,77 @@ def _add_log_type(logger, method, event_dict):
     return event_dict
 
 
+_APP_FIELDS = frozenset(
+    {
+        "timestamp",
+        "level",
+        "name",
+        "message",
+        "log_type",
+        "filename",
+        "func_name",
+        "request_id",
+        "exception",
+        "extra",
+    }
+)
+
+_AUDIT_FIELDS = frozenset(
+    {
+        "timestamp",
+        "level",
+        "name",
+        "message",
+        "log_type",
+        "model",
+        "event_type",
+        "request_id",
+        "instance_id",
+        "instance_repr",
+        "user_id",
+        "user_info",
+        "extra",
+    }
+)
+
+_API_FIELDS = frozenset(
+    {
+        "timestamp",
+        "level",
+        "name",
+        "message",
+        "log_type",
+        "service_name",
+        "request_type",
+        "protocol",
+        "request_id",
+        "user_id",
+        "user_info",
+        "request_repr",
+        "response_repr",
+        "error_message",
+        "execution_time",
+        "extra",
+    }
+)
+
+_FIELDS_BY_LOG_TYPE = {
+    LogType.APP: _APP_FIELDS,
+    LogType.CELERYBEAT: _APP_FIELDS,
+    LogType.CELERYWORKER: _APP_FIELDS,
+    LogType.AUDIT: _AUDIT_FIELDS,
+    LogType.API: _API_FIELDS,
+}
+
+
+def trim_log_fields(logger, method, event_dict):
+    """Keep only the required fields for each log type."""
+    allowed = _FIELDS_BY_LOG_TYPE.get(event_dict.get("log_type"))
+    if allowed is not None:
+        return {k: v for k, v in event_dict.items() if k in allowed}
+    return event_dict
+
+
 _STANDARD_KEYS = frozenset(
     {
         "timestamp",

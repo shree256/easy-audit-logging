@@ -118,6 +118,18 @@ class AuditLoggingMiddleware(MiddlewareMixin):
     }
     """
 
+    def _init_log_data(self):
+        return {
+            "service_name": SERVICE_NAME,
+            "request_type": REQUEST_TYPES[0],
+            "protocol": None,
+            "request_repr": {},
+            "response_repr": {},
+            "error_message": None,
+            "execution_time": 0,
+            "extra": {},
+        }
+
     def __init__(self, get_response):
         self.get_response = get_response
 
@@ -135,15 +147,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         if not should_log_url(request.path):
             return self.get_response(request)
 
-        log_data = {
-            "service_name": SERVICE_NAME,
-            "request_type": REQUEST_TYPES[0],
-            "protocol": None,
-            "request_repr": {},
-            "response_repr": {},
-            "error_message": None,
-            "execution_time": 0,
-        }
+        log_data = self._init_log_data()
         start_time = time.time()
 
         # Log request
@@ -209,15 +213,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         if not should_log_url(request.path):
             return await self.get_response(request)
 
-        log_data = {
-            "service_name": SERVICE_NAME,
-            "request_type": REQUEST_TYPES[0],
-            "protocol": None,
-            "request_repr": {},
-            "response_repr": {},
-            "error_message": None,
-            "execution_time": 0,
-        }
+        log_data = self._init_log_data()
         start_time = time.time()
 
         # Log request

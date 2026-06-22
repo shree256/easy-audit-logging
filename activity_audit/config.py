@@ -4,6 +4,7 @@ from activity_audit.shared_processors import (
     _json_default,
     _orjson_dumps,
     shared_processors,
+    trim_log_fields,
 )
 
 
@@ -46,6 +47,7 @@ def get_stdlib_formatter() -> dict:
         "()": structlog.stdlib.ProcessorFormatter,
         "processors": [
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            trim_log_fields,
             structlog.processors.JSONRenderer(
                 serializer=_orjson_dumps, default=_json_default
             ),

@@ -63,9 +63,12 @@ class AppFormatter(logging.Formatter):
             "log_type": self.log_type,
         }
 
-        # Add exception info if present for ERROR
         if record.exc_info:
             log_data["exception"] = "{}".format(self.formatException(record.exc_info))
+
+        extra = getattr(record, "extra", "")
+        if extra:
+            log_data["extra"] = extra
 
         return json.dumps(log_data, default=_json_default)
 
@@ -106,6 +109,7 @@ class APIFormatter(logging.Formatter):
             "response_repr",
             "error_message",
             "execution_time",
+            "extra",
         ]
 
         for field in audit_fields:
