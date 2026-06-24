@@ -16,6 +16,8 @@ from activity_audit.utils import (
     get_login_handler,
 )
 
+from .config import get_logger
+
 from . import logger_levels
 
 __all__ = [
@@ -32,4 +34,5 @@ __all__ = [
     "get_async_api_handler",
     "get_async_audit_handler",
     "get_async_login_handler",
+    "get_logger",
 ]

@@ -1,21 +1,26 @@
-import contextlib
 import json
-import logging
 import re
 import time
 import uuid
 
-from asgiref.local import Local
-from asgiref.sync import iscoroutinefunction, markcoroutinefunction, sync_to_async
+from contextvars import ContextVar
+
+import structlog.contextvars as ctx
+
+from asgiref.sync import (
+    iscoroutinefunction,
+    markcoroutinefunction,
+)
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from .config import get_logger
 from .constants import REQUEST_TYPES
 from .settings import REGISTERED_URLS, SERVICE_NAME, UNREGISTERED_URLS
 
-logger = logging.getLogger("audit.request")
+_log = get_logger("audit.request")
 
-_thread_locals = Local()
+_request_var: ContextVar = ContextVar("current_request", default=None)
 
 
 class MockRequest:
@@ -26,19 +31,11 @@ class MockRequest:
 
 
 def get_current_request():
-    return getattr(_thread_locals, "request", None)
+    return _request_var.get()
 
 
 def set_current_request(request):
-    _thread_locals.request = request
-
-
-def get_request_id():
-    return getattr(_thread_locals, "request_id", None)
-
-
-def set_request_id(request_id):
-    _thread_locals.request_id = request_id
+    _request_var.set(request)
 
 
 def get_current_user():
@@ -49,11 +46,11 @@ def get_current_user():
 
 
 def set_current_user(user):
-    try:
-        _thread_locals.request.user = user
-    except AttributeError:
-        request = MockRequest(user=user)
-        _thread_locals.request = request
+    request = _request_var.get()
+    if request is not None:
+        request.user = user
+    else:
+        _request_var.set(MockRequest(user=user))
 
 
 def get_user_details():
@@ -75,10 +72,7 @@ def get_user_details():
 
 
 def clear_request():
-    with contextlib.suppress(AttributeError):
-        del _thread_locals.request
-    with contextlib.suppress(AttributeError):
-        del _thread_locals.request_id
+    _request_var.set(None)
 
 
 def should_log_url(url):
@@ -124,6 +118,18 @@ class AuditLoggingMiddleware(MiddlewareMixin):
     }
     """
 
+    def _init_log_data(self):
+        return {
+            "service_name": SERVICE_NAME,
+            "request_type": REQUEST_TYPES[0],
+            "protocol": None,
+            "request_repr": {},
+            "response_repr": {},
+            "error_message": None,
+            "execution_time": 0,
+            "extra": {},
+        }
+
     def __init__(self, get_response):
         self.get_response = get_response
 
@@ -135,23 +141,13 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             return self.__acall__(request)
         set_current_request(request)
         request_id = str(uuid.uuid4())
-        set_request_id(request_id)
+        ctx.clear_contextvars()
+        ctx.bind_contextvars(request_id=request_id)
 
         if not should_log_url(request.path):
             return self.get_response(request)
 
-        log_data = {
-            "service_name": SERVICE_NAME,
-            "request_type": REQUEST_TYPES[0],
-            "protocol": None,
-            "request_id": "",
-            "user_id": "",
-            "user_info": {},
-            "request_repr": {},
-            "response_repr": {},
-            "error_message": None,
-            "execution_time": 0,
-        }
+        log_data = self._init_log_data()
         start_time = time.time()
 
         # Log request
@@ -175,8 +171,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         # Capture user details AFTER authentication has happened
         user_id, user_info = get_user_details()
-        log_data["user_id"] = user_id
-        log_data["user_info"] = user_info
+        ctx.bind_contextvars(user_id=user_id, user_info=user_info)
 
         # TODO: Find way to add status code to response_data
 
@@ -198,36 +193,27 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         log_data["execution_time"] = end_time - start_time
         log_data["protocol"] = "https" if request.is_secure() else "http"
-        log_data["request_id"] = request_id
         log_data["request_repr"] = request_data
         log_data["response_repr"] = response_data
 
-        logger.api("Audit Internal Request", extra=log_data)
+        bound = _log.bind(**log_data)
+        bound.api("Audit Internal Request")
 
         clear_request()
+        ctx.clear_contextvars()
 
         return response
 
     async def __acall__(self, request):
         set_current_request(request)
         request_id = str(uuid.uuid4())
-        set_request_id(request_id)
+        ctx.clear_contextvars()
+        ctx.bind_contextvars(request_id=request_id)
 
         if not should_log_url(request.path):
             return await self.get_response(request)
 
-        log_data = {
-            "service_name": SERVICE_NAME,
-            "request_type": REQUEST_TYPES[0],
-            "protocol": None,
-            "request_id": "",
-            "user_id": "",
-            "user_info": {},
-            "request_repr": {},
-            "response_repr": {},
-            "error_message": None,
-            "execution_time": 0,
-        }
+        log_data = self._init_log_data()
         start_time = time.time()
 
         # Log request
@@ -250,11 +236,8 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         end_time = time.time()
 
         # Capture user details AFTER authentication has happened
-        user_id, user_info = await sync_to_async(
-            get_user_details, thread_sensitive=True
-        )()
-        log_data["user_id"] = user_id
-        log_data["user_info"] = user_info
+        user_id, user_info = get_user_details()
+        ctx.bind_contextvars(user_id=user_id, user_info=user_info)
 
         # TODO: Find way to add status code to response_data
 
@@ -276,12 +259,13 @@ class AuditLoggingMiddleware(MiddlewareMixin):
 
         log_data["execution_time"] = end_time - start_time
         log_data["protocol"] = "https" if request.is_secure() else "http"
-        log_data["request_id"] = request_id
         log_data["request_repr"] = request_data
         log_data["response_repr"] = response_data
 
-        logger.api("Audit Internal Request", extra=log_data)
+        bound = _log.bind(**log_data)
+        bound.api("Audit Internal Request")
 
         clear_request()
+        ctx.clear_contextvars()
 
         return response

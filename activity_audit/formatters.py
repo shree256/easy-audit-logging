@@ -4,8 +4,9 @@ import json
 import logging
 import uuid
 
+import structlog.contextvars as ctx
+
 from .constants import LogType
-from .middleware import get_request_id
 
 
 def _json_default(obj):
@@ -55,15 +56,19 @@ class AppFormatter(logging.Formatter):
             "path": record.pathname,
             "module": record.module,
             "function": record.funcName,
-            "request_id": getattr(record, "request_id", None) or get_request_id() or "",
+            "request_id": getattr(record, "request_id", None)
+            or ctx.get_contextvars().get("request_id", ""),
             "message": record.getMessage(),
             "exception": "",
             "log_type": self.log_type,
         }
 
-        # Add exception info if present for ERROR
         if record.exc_info:
             log_data["exception"] = "{}".format(self.formatException(record.exc_info))
+
+        extra = getattr(record, "extra", "")
+        if extra:
+            log_data["extra"] = extra
 
         return json.dumps(log_data, default=_json_default)
 
@@ -104,6 +109,7 @@ class APIFormatter(logging.Formatter):
             "response_repr",
             "error_message",
             "execution_time",
+            "extra",
         ]
 
         for field in audit_fields:

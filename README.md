@@ -19,6 +19,8 @@ A Django package that extends the default logging mechanism to track CRUD operat
 pip install django-activity-audit
 ```
 
+This also installs [`structlog`](https://www.structlog.org/) and [`orjson`](https://github.com/ijl/orjson) as required dependencies.
+
 2. Add 'activity_audit' to your INSTALLED_APPS in settings.py:
 ```python
 INSTALLED_APPS = [
@@ -36,46 +38,100 @@ MIDDLEWARE = [
 ```
 
 4. Configure logging in settings.py:
+
+Import the formatter helpers from `activity_audit.config`:
+
 ```python
-from activity_audit import *
+from activity_audit.config import get_plain_formatter, get_stdlib_formatter
+```
+
+- `get_stdlib_formatter()` — structlog JSON renderer. Use in staging/production where logs are ingested by a pipeline (Vector, CloudWatch, etc.).
+- `get_plain_formatter()` — structlog plain-text renderer. Use locally for human-readable console output.
+
+**Local development** (plain text output):
+
+```python
+from activity_audit.config import get_plain_formatter, get_stdlib_formatter
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "json": get_json_formatter(),
-        "verbose": get_console_formatter(),
+        "structlog": get_stdlib_formatter(),
+        "default":   get_plain_formatter(),
     },
     "handlers": {
-        "console": {
-            "level": "DEBUG",
-            "class": "logging.StreamHandler",
-            "formatter": "verbose",
-        },
-        "file": get_json_handler(level="DEBUG", formatter="json"),
-        "api_file": get_api_file_handler(),
-        "audit_file": get_audit_handler(),
+        "console":        {"class": "logging.StreamHandler", "formatter": "default"},
+        "console_struct": {"class": "logging.StreamHandler", "formatter": "structlog"},
     },
-    "root": {"level": "DEBUG", "handlers": ["console", "file"]},
+    "root": {
+        "level": "INFO",
+        "handlers": ["console"],   # plain text fallback for all loggers
+    },
     "loggers": {
-        "audit.request": {
-            "handlers": ["api_file"],
-            "level": "API",
-            "propagate": False,
-        },
-        "audit.model": {
-            "handlers": ["audit_file"],
-            "level": "AUDIT",
-            "propagate": False,
-        },
-        "django": {
-            "handlers": ["console", "file"],
-            "level": "INFO",
-            "propagate": False,
-        },
-    }
+        # Structlog owns these — explicit handler, no propagation to avoid double output
+        "audit.model":   {"handlers": ["console_struct"], "propagate": False},
+        "audit.request": {"handlers": ["console_struct"], "propagate": False},
+        "audit.login":   {"handlers": ["console_struct"], "propagate": False},
+
+        # Celery — structlog formats log_type correctly
+        "celery":        {"level": "INFO", "handlers": ["console_struct"], "propagate": False},
+        "celery.task":   {"level": "INFO", "handlers": ["console_struct"], "propagate": False},
+        "celery.beat":   {"level": "INFO", "handlers": ["console_struct"], "propagate": False},
+
+        # Third-party noise control — WARNING only, routed to root
+        "django.db.backends": {"level": "WARNING", "handlers": [], "propagate": True},
+        "boto3":              {"level": "WARNING", "handlers": [], "propagate": True},
+        "botocore":           {"level": "WARNING", "handlers": [], "propagate": True},
+
+        # Framework loggers
+        "django":        {"level": "INFO", "handlers": [], "propagate": True},
+        "uvicorn":       {"level": "INFO", "handlers": [], "propagate": True},
+        "uvicorn.error": {"level": "INFO", "handlers": [], "propagate": True},
+        "uvicorn.access":{"level": "INFO", "handlers": [], "propagate": True},
+    },
 }
 ```
+
+**Staging / production** (structured JSON output): identical structure, but the `root` handler also uses `console_struct` (or keep `console` for mixed output — both handlers use the same `StreamHandler` class):
+
+```python
+"root": {
+    "level": "INFO",
+    "handlers": ["console"],
+}
+```
+
+---
+
+### When to add a logger entry
+
+Add an explicit logger entry when you need **any** of the following:
+
+| Situation | What to set |
+|-----------|-------------|
+| Route to structured JSON (`console_struct`) | `handlers: ["console_struct"], propagate: False` |
+| Suppress a noisy third-party library | `level: "WARNING", handlers: [], propagate: True` |
+| Prevent double output for a structlog-owned logger | `handlers: ["console_struct"], propagate: False` |
+| Change the log level for a specific namespace | Set `level` explicitly |
+
+**Do not** add a logger entry if the default behaviour is acceptable — a logger with no entry propagates to `root` and is emitted in plain text at INFO level. That is the correct behaviour for most application loggers.
+
+### Silencing audit loggers (route to root instead of structlog)
+
+By default `audit.model`, `audit.request`, and `audit.login` are pointed at `console_struct` with `propagate: False` so only the structlog-formatted JSON line is emitted.
+
+To stop structlog from handling them and fall back to the plain-text root logger instead, set `handlers: []` and `propagate: True`:
+
+```python
+"loggers": {
+    "audit.model":   {"handlers": [], "propagate": True},
+    "audit.request": {"handlers": [], "propagate": True},
+    "audit.login":   {"handlers": [], "propagate": True},
+}
+```
+
+This routes all three through the `root` logger (`console` handler, `default` / plain-text formatter). Use this when you want to completely disable structured audit output — for example, in a minimal local environment or during debugging.
 
 5. Configure the service name in `settings.py` (optional, defaults to `"default"`):
 ```python
@@ -127,6 +183,7 @@ INFO 2025-04-30 08:51:10,403 /app/patients/api/utils.py utils create_patient_wit
     "level": "AUDIT",
     "name": "audit.model",
     "message": "CREATE event by User (id: 6f77b814-f9c1-4cab-a737-6677734bc303)",
+    "request_id": "f3c9a1b2-0001-4abc-beef-deadbeef0001",
     "model": "User",
     "event_type": "CREATE",
     "instance_id": "6f77b814-f9c1-4cab-a737-6677734bc303",
@@ -157,6 +214,7 @@ INFO 2025-04-30 08:51:10,403 /app/patients/api/utils.py utils create_patient_wit
     "level": "API",
     "name": "audit.request",
     "message": "Audit Internal Request",
+    "request_id": "f3c9a1b2-0001-4abc-beef-deadbeef0001",
     "service_name": "my_service",
     "request_type": "internal",
     "protocol": "http",
@@ -203,6 +261,7 @@ INFO 2025-04-30 08:51:10,403 /app/patients/api/utils.py utils create_patient_wit
     "level": "API",
     "name": "audit.request",
     "message": "Audit External Service",
+    "request_id": "f3c9a1b2-0001-4abc-beef-deadbeef0001",
     "service_name": "apollo",
     "request_type": "external",
     "protocol": "http",

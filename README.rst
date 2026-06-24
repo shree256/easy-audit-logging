@@ -17,70 +17,147 @@ Features
 Installation
 ------------
 
-1. Install the package::
+1. Install the package:
+
+.. code-block:: bash
 
     pip install django-activity-audit
 
-2. Add ``activity_audit`` to your ``INSTALLED_APPS`` in ``settings.py``::
+This also installs `structlog <https://www.structlog.org/>`_ and `orjson <https://github.com/ijl/orjson>`_ as required dependencies.
+
+2. Add ``activity_audit`` to your ``INSTALLED_APPS`` in ``settings.py``:
+
+.. code-block:: python
 
     INSTALLED_APPS = [
         ...
         'activity_audit',
     ]
 
-3. Add the middleware to your ``MIDDLEWARE`` in ``settings.py``::
+3. Add the middleware to your ``MIDDLEWARE`` in ``settings.py``:
+
+.. code-block:: python
 
     MIDDLEWARE = [
         ...
         'activity_audit.middleware.AuditLoggingMiddleware',
     ]
 
-4. Configure logging in ``settings.py``::
+4. Configure logging in ``settings.py``.
 
-    from activity_audit import *
+   Import the formatter helpers from ``activity_audit.config``:
+
+.. code-block:: python
+
+    from activity_audit.config import get_plain_formatter, get_stdlib_formatter
+
+- ``get_stdlib_formatter()`` — structlog JSON renderer. Use in staging/production where logs are ingested by a pipeline (Vector, CloudWatch, etc.).
+- ``get_plain_formatter()`` — structlog plain-text renderer. Use locally for human-readable console output.
+
+**Local development** (plain text output):
+
+.. code-block:: python
+
+    from activity_audit.config import get_plain_formatter, get_stdlib_formatter
 
     LOGGING = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "json": get_json_formatter(),
-            "verbose": get_console_formatter(),
+            "structlog": get_stdlib_formatter(),
+            "default":   get_plain_formatter(),
         },
         "handlers": {
-            "console": {
-                "level": "DEBUG",
-                "class": "logging.StreamHandler",
-                "formatter": "verbose",
-            },
-            "file": get_json_handler(level="DEBUG", formatter="json"),
-            "api_file": get_api_file_handler(),
-            "audit_file": get_audit_handler(),
+            "console":        {"class": "logging.StreamHandler", "formatter": "default"},
+            "console_struct": {"class": "logging.StreamHandler", "formatter": "structlog"},
         },
-        "root": {"level": "DEBUG", "handlers": ["console", "file"]},
+        "root": {
+            "level": "INFO",
+            "handlers": ["console"],   # plain text fallback for all loggers
+        },
         "loggers": {
-            "audit.request": {
-                "handlers": ["api_file"],
-                "level": "API",
-                "propagate": False,
-            },
-            "audit.model": {
-                "handlers": ["audit_file"],
-                "level": "AUDIT",
-                "propagate": False,
-            },
-            "django": {
-                "handlers": ["console", "file"],
-                "level": "INFO",
-                "propagate": False,
-            },
-        }
+            # Structlog owns these — explicit handler, no propagation to avoid double output
+            "audit.model":   {"handlers": ["console_struct"], "propagate": False},
+            "audit.request": {"handlers": ["console_struct"], "propagate": False},
+            "audit.login":   {"handlers": ["console_struct"], "propagate": False},
+
+            # Celery — structlog formats log_type correctly
+            "celery":        {"level": "INFO", "handlers": ["console_struct"], "propagate": False},
+            "celery.task":   {"level": "INFO", "handlers": ["console_struct"], "propagate": False},
+            "celery.beat":   {"level": "INFO", "handlers": ["console_struct"], "propagate": False},
+
+            # Third-party noise control — WARNING only, routed to root
+            "django.db.backends": {"level": "WARNING", "handlers": [], "propagate": True},
+            "boto3":              {"level": "WARNING", "handlers": [], "propagate": True},
+            "botocore":           {"level": "WARNING", "handlers": [], "propagate": True},
+
+            # Framework loggers
+            "django":        {"level": "INFO", "handlers": [], "propagate": True},
+            "uvicorn":       {"level": "INFO", "handlers": [], "propagate": True},
+            "uvicorn.error": {"level": "INFO", "handlers": [], "propagate": True},
+            "uvicorn.access":{"level": "INFO", "handlers": [], "propagate": True},
+        },
     }
 
-5. Configure the service name in ``settings.py`` (optional, defaults to ``"default"``)::
+**Staging / production** (structured JSON output): identical structure, but the ``root`` handler also uses ``console_struct`` (or keep ``console`` for mixed output — both handlers use the same ``StreamHandler`` class):
+
+.. code-block:: python
+
+    "root": {
+        "level": "INFO",
+        "handlers": ["console"],
+    }
+
+---
+
+When to add a logger entry
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Add an explicit logger entry when you need **any** of the following:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 60 40
+
+   * - Situation
+     - What to set
+   * - Route to structured JSON (``console_struct``)
+     - ``handlers: ["console_struct"], propagate: False``
+   * - Suppress a noisy third-party library
+     - ``level: "WARNING", handlers: [], propagate: True``
+   * - Prevent double output for a structlog-owned logger
+     - ``handlers: ["console_struct"], propagate: False``
+   * - Change the log level for a specific namespace
+     - Set ``level`` explicitly
+
+**Do not** add a logger entry if the default behaviour is acceptable — a logger with no entry propagates to ``root`` and is emitted in plain text at INFO level. That is the correct behaviour for most application loggers.
+
+Silencing audit loggers (route to root instead of structlog)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default ``audit.model``, ``audit.request``, and ``audit.login`` are pointed at ``console_struct`` with ``propagate: False`` so only the structlog-formatted JSON line is emitted.
+
+To stop structlog from handling them and fall back to the plain-text root logger instead, set ``handlers: []`` and ``propagate: True``:
+
+.. code-block:: python
+
+    "loggers": {
+        "audit.model":   {"handlers": [], "propagate": True},
+        "audit.request": {"handlers": [], "propagate": True},
+        "audit.login":   {"handlers": [], "propagate": True},
+    }
+
+This routes all three through the ``root`` logger (``console`` handler, ``default`` / plain-text formatter). Use this when you want to completely disable structured audit output — for example, in a minimal local environment or during debugging.
+
+5. Configure the service name in ``settings.py`` (optional, defaults to ``"default"``):
+
+.. code-block:: python
 
     AUDIT_SERVICE_NAME = "my_service"
 
-6. For external services logging, extend ``HTTPClient`` or ``SFTPClient``::
+6. For external services logging, extend ``HTTPClient`` or ``SFTPClient``:
+
+.. code-block:: python
 
     class ExternalService(HTTPClient):
         def __init__(self):
@@ -88,15 +165,15 @@ Installation
 
         def connect(self):
             url = "https://www.sample.com"
-            response = self.get(url) # sample log structure below
+            response = self.get(url)  # sample log structure below
 
-7. Create ``audit_logs`` folder in project directory
+8. Create ``audit_logs`` folder in project directory
 
 Log Types
 ---------
 
 Container Logs
---------------
+~~~~~~~~~~~~~~
 
 Console Log Format::
 
@@ -104,10 +181,10 @@ Console Log Format::
     -----------------------------------------------------------------------------
     INFO 2025-04-30 08:51:10,403 /app/patients/api/utils.py utils create_patient_with_contacts_and_diseases Patient 'd6c9a056-0b57-453a-8c0f-44319004b761 - Patient3' created.
 
-APP Log 
--------
+APP Log
+~~~~~~~
 
-::
+.. code-block:: json
 
     {
         "timestamp": "2025-05-15 13:38:02.141",
@@ -121,9 +198,9 @@ APP Log
     }
 
 CRUD Log
---------
+~~~~~~~~
 
-::
+.. code-block:: json
 
     {
         "timestamp": "2025-08-16 17:06:32.403",
@@ -133,29 +210,30 @@ CRUD Log
         "model": "User",
         "event_type": "CREATE",
         "instance_id": "6f77b814-f9c1-4cab-a737-6677734bc303",
-        "instance_repr" : {
+        "instance_repr": {
             "name": "Test Model",
             "is_active": true,
             "created_at": "2025-08-29T08:18:54Z",
             "updated_at": "2025-08-29T08:18:54Z"
         },
-        "user_id": "14ab1197-ebdd-4300-a618-5910e0219936",
+        "user_id": "cae8ffb4-ba52-409c-9a6f-e10362bfaf97",
         "user_info": {
             "title": "mr",
-            "email": "example@email.com",
-            "first_name": "mohanlal",
-            "middle_name": "",
+            "email": "example@source.com",
+            "first_name": "mohamlal",
+            "middle_name": "v",
             "last_name": "nair",
-            "sex": "male",
-            "date_of_birth": "21/30/1939"
+            "sex": "m"
         },
         "extra": {}
     }
 
 Request-Response Log
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
-Incoming Log Format::
+Incoming Log Format:
+
+.. code-block:: json
 
     {
         "timestamp": "2025-05-19 15:25:27.836",
@@ -180,17 +258,15 @@ Incoming Log Format::
             "path": "/api/v1/health/",
             "query_params": {},
             "headers": {
-                "Content-Type": "application/json",
+                "Content-Type": "application/json"
             },
-            "user": null,
             "body": {
                 "title": "hello"
             }
         },
         "response_repr": {
-            "status_code": 200,
             "headers": {
-                "Content-Type": "application/json",
+                "Content-Type": "application/json"
             },
             "body": {
                 "status": "ok"
@@ -200,7 +276,9 @@ Incoming Log Format::
         "execution_time": 5.376734018325806
     }
 
-External Log format::
+External Log Format:
+
+.. code-block:: json
 
     {
         "timestamp": "2025-05-19 15:25:27.717",
@@ -242,7 +320,7 @@ External Log format::
 Notes
 -----
 
-- Compatible with **Django 3.2+** and **Python 3.7+**.
+- Compatible with **Django 4.2+** and **Python 3.8+**.
 - Designed for easy integration with observability stacks using Vector, ClickHouse, and Grafana.
 - Capture Django CRUD operations automatically
 - Write structured JSON logs
@@ -260,4 +338,4 @@ Related Tools
 License
 -------
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.

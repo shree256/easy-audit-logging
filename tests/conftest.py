@@ -2,6 +2,8 @@ import json
 import logging
 import os
 
+from types import SimpleNamespace
+
 import django
 import pytest
 
@@ -39,10 +41,42 @@ class LogCapture(logging.Handler):
         self.formatted_outputs.clear()
 
     def by_event_type(self, event_type):
-        return [r for r in self.records if getattr(r, "event_type", None) == event_type]
+        """Return SimpleNamespace objects parsed from structlog records.
+
+        structlog's wrap_for_formatter stores the processed event dict directly
+        as record.msg (a Python dict). If that's available, use it directly.
+        Otherwise fall back to JSON-parsing getMessage() for stdlib-formatted
+        records, then to a plain attribute lookup.
+        """
+        result = []
+        for r in self.records:
+            if isinstance(r.msg, dict):
+                if r.msg.get("event_type") == event_type:
+                    result.append(SimpleNamespace(**r.msg))
+                continue
+            try:
+                data = json.loads(r.getMessage())
+                if data.get("event_type") == event_type:
+                    result.append(SimpleNamespace(**data))
+            except (json.JSONDecodeError, AttributeError):
+                if getattr(r, "event_type", None) == event_type:
+                    result.append(r)
+        return result
 
     def by_level(self, level_name):
-        return [r for r in self.records if r.levelname == level_name]
+        result = []
+        for r in self.records:
+            if r.levelname != level_name:
+                continue
+            if isinstance(r.msg, dict):
+                result.append(SimpleNamespace(**r.msg))
+                continue
+            try:
+                data = json.loads(r.getMessage())
+                result.append(SimpleNamespace(**data))
+            except (json.JSONDecodeError, AttributeError):
+                result.append(r)
+        return result
 
 
 @pytest.fixture
