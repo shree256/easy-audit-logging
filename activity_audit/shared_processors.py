@@ -56,7 +56,7 @@ def _detect_process_log_type() -> str:
     argv = " ".join(sys.argv)
     if "beat" in argv:
         return LogType.CELERYBEAT
-    if "worker" in argv or "celery" in argv:
+    if "celery" in argv:
         return LogType.CELERYWORKER
     return LogType.AUDIT
 
