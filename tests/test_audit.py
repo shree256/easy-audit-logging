@@ -225,51 +225,57 @@ class TestM2MLogging:
 # ---------------------------------------------------------------------------
 
 
-def _make_record(name, level=logging.INFO, **attrs):
-    """Build a LogRecord pre-populated with the given extra attributes."""
-    record = logging.LogRecord(
-        name=name,
-        level=level,
-        pathname="/app/module.py",
-        lineno=42,
-        msg="Test message",
-        args=(),
-        exc_info=None,
-    )
-    for key, value in attrs.items():
-        setattr(record, key, value)
-    return record
+def _emit_via_structlog(logger_name, method_name, message, **fields):
+    """Bind fields onto a real structlog logger, emit through the same
+    ProcessorFormatter (get_stdlib_formatter) used in production, and return
+    the parsed JSON that a console handler would have written."""
+    from activity_audit.config import get_logger, get_stdlib_formatter
 
+    formatter_kwargs = get_stdlib_formatter()
+    formatter_cls = formatter_kwargs.pop("()")
+    formatter = formatter_cls(**formatter_kwargs)
 
-def _emit_to_stream(formatter, record):
-    """Emit a record through a StreamHandler and return the parsed JSON output."""
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     handler.setFormatter(formatter)
-    handler.emit(record)
+
+    stdlib_logger = logging.getLogger(logger_name)
+    stdlib_logger.addHandler(handler)
+    previous_level = stdlib_logger.level
+    stdlib_logger.setLevel(1)
+    try:
+        bound_logger = get_logger(logger_name).bind(**fields)
+        getattr(bound_logger, method_name)(message)
+    finally:
+        stdlib_logger.removeHandler(handler)
+        stdlib_logger.setLevel(previous_level)
+
     return json.loads(stream.getvalue().strip())
 
 
 class TestFormatterConsoleOutput:
-    """Each formatter produces JSON that contains every field it declares."""
+    """Each log_type's structlog JSON output contains every field it declares
+    (see `_FIELDS_BY_LOG_TYPE` in shared_processors.py)."""
 
-    def test_audit_formatter_has_all_declared_fields(self):
-        from activity_audit.formatters import AuditFormatter
+    def test_audit_log_type_has_all_declared_fields(self):
+        import structlog.contextvars as ctx
 
-        formatter = AuditFormatter()
-        record = _make_record(
-            "audit.model",
-            model="Author",
-            event_type="CREATE",
-            request_id="req-abc",
-            instance_id="7",
-            instance_repr={"name": "Alice"},
-            user_id="u-1",
-            user_info={"email": "alice@example.com"},
-            extra={"source": "test"},
-        )
-
-        output = _emit_to_stream(formatter, record)
+        ctx.bind_contextvars(request_id="req-abc")
+        try:
+            output = _emit_via_structlog(
+                "audit.model",
+                "audit",
+                "CREATE event",
+                model="Author",
+                event_type="CREATE",
+                instance_id="7",
+                instance_repr={"name": "Alice"},
+                user_id="u-1",
+                user_info={"email": "alice@example.com"},
+                extra={"source": "test"},
+            )
+        finally:
+            ctx.clear_contextvars()
 
         for field in (
             "timestamp",
@@ -286,37 +292,39 @@ class TestFormatterConsoleOutput:
             "user_info",
             "extra",
         ):
-            assert field in output, f"AuditFormatter missing field in output: {field}"
+            assert field in output, f"audit log output missing field: {field}"
 
         assert output["model"] == "Author"
         assert output["event_type"] == "CREATE"
         assert output["request_id"] == "req-abc"
         assert output["instance_repr"] == {"name": "Alice"}
 
-    def test_api_formatter_has_all_declared_fields(self):
-        from activity_audit.formatters import APIFormatter
+    def test_api_log_type_has_all_declared_fields(self):
+        import structlog.contextvars as ctx
 
-        formatter = APIFormatter()
-        record = _make_record(
-            "audit.request",
-            service_name="test-svc",
-            request_type="internal",
-            protocol="http",
-            request_id="req-xyz",
-            user_id="u-2",
-            user_info={"email": "bob@example.com"},
-            request_repr={
-                "method": "GET",
-                "path": "/api/test/",
-                "headers": {},
-                "query_params": {},
-            },
-            response_repr={"headers": {}, "body": []},
-            error_message=None,
-            execution_time=0.045,
-        )
-
-        output = _emit_to_stream(formatter, record)
+        ctx.bind_contextvars(request_id="req-xyz")
+        try:
+            output = _emit_via_structlog(
+                "audit.request",
+                "api",
+                "Audit Internal Request",
+                service_name="test-svc",
+                request_type="internal",
+                protocol="http",
+                user_id="u-2",
+                user_info={"email": "bob@example.com"},
+                request_repr={
+                    "method": "GET",
+                    "path": "/api/test/",
+                    "headers": {},
+                    "query_params": {},
+                },
+                response_repr={"headers": {}, "body": []},
+                error_message=None,
+                execution_time=0.045,
+            )
+        finally:
+            ctx.clear_contextvars()
 
         for field in (
             "timestamp",
@@ -335,99 +343,50 @@ class TestFormatterConsoleOutput:
             "error_message",
             "execution_time",
         ):
-            assert field in output, f"APIFormatter missing field in output: {field}"
+            assert field in output, f"api log output missing field: {field}"
 
         assert output["service_name"] == "test-svc"
         assert output["execution_time"] == pytest.approx(0.045)
         assert output["request_repr"]["method"] == "GET"
 
-    def test_app_formatter_has_all_declared_fields(self):
-        from activity_audit.formatters import AppFormatter
-
-        formatter = AppFormatter()
-        record = _make_record("app.general")
-
-        output = _emit_to_stream(formatter, record)
+    def test_app_log_type_has_all_declared_fields(self):
+        output = _emit_via_structlog("app.general", "info", "Test message")
 
         for field in (
             "timestamp",
             "level",
             "name",
-            "path",
-            "module",
-            "function",
-            "request_id",
             "message",
-            "exception",
             "log_type",
+            "filename",
+            "func_name",
         ):
-            assert field in output, f"AppFormatter missing field in output: {field}"
+            assert field in output, f"app log output missing field: {field}"
 
-    def test_app_formatter_includes_request_id_from_contextvars(self):
-        """AppFormatter pulls request_id from contextvars when not on the record."""
+        assert output["log_type"] == "app"
+
+    def test_app_log_type_includes_request_id_from_contextvars(self):
+        """App-namespaced (foreign) loggers pick up request_id via merge_contextvars."""
         import structlog.contextvars as ctx
-
-        from activity_audit.formatters import AppFormatter
 
         ctx.bind_contextvars(request_id="contextvar-id")
         try:
-            formatter = AppFormatter()
-            record = _make_record("app.general")
-            output = _emit_to_stream(formatter, record)
+            output = _emit_via_structlog("app.general", "info", "Test message")
             assert output["request_id"] == "contextvar-id"
         finally:
             ctx.clear_contextvars()
 
-    def test_formatter_output_is_valid_json(self):
-        """All formatters produce well-formed JSON (no trailing garbage)."""
-        from activity_audit.formatters import APIFormatter, AppFormatter, AuditFormatter
-
+    def test_output_is_valid_json_for_every_log_type(self):
+        """All log types produce well-formed JSON (no trailing garbage)."""
         cases = [
-            (
-                AuditFormatter(),
-                _make_record(
-                    "audit.model",
-                    model="X",
-                    event_type="CREATE",
-                    request_id="",
-                    instance_id="1",
-                    instance_repr={},
-                    user_id="",
-                    user_info={},
-                    extra={},
-                ),
-            ),
-            (
-                APIFormatter(),
-                _make_record(
-                    "audit.request",
-                    service_name="",
-                    request_type="",
-                    protocol="",
-                    request_id="",
-                    user_id="",
-                    user_info={},
-                    request_repr={},
-                    response_repr={},
-                    error_message=None,
-                    execution_time=0,
-                ),
-            ),
-            (AppFormatter(), _make_record("app")),
+            ("audit.model", "audit", dict(model="X", event_type="CREATE")),
+            ("audit.request", "api", dict(service_name="", request_type="")),
+            ("app.general", "info", {}),
         ]
 
-        for formatter, record in cases:
-            stream = io.StringIO()
-            handler = logging.StreamHandler(stream)
-            handler.setFormatter(formatter)
-            handler.emit(record)
-            raw = stream.getvalue().strip()
-            try:
-                json.loads(raw)
-            except json.JSONDecodeError as exc:
-                pytest.fail(
-                    f"{formatter.__class__.__name__} produced invalid JSON: {exc}\n{raw}"
-                )
+        for logger_name, method_name, fields in cases:
+            # Raises json.JSONDecodeError (failing the test) on malformed output.
+            _emit_via_structlog(logger_name, method_name, "Test message", **fields)
 
 
 # ---------------------------------------------------------------------------

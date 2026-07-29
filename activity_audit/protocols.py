@@ -1,4 +1,3 @@
-import logging
 import time
 
 from typing import Optional, Tuple
@@ -8,13 +7,14 @@ import paramiko
 from django.conf import settings
 from requests.sessions import Session
 
+from .config import get_logger
 from .constants import REQUEST_TYPES
 from .middleware import get_user_details
 
 # Get SHOULD_LOG_EXTERNAL_REQUESTS from Django settings where this app is installed
 SHOULD_LOG_EXTERNAL_REQUESTS = getattr(settings, "SHOULD_LOG_EXTERNAL_REQUESTS", False)
 
-logger = logging.getLogger("audit.request")
+logger = get_logger("audit.request")
 
 PROTOCOLS = ("http", "sftp")
 OPERATIONS = ("upload", "download")
@@ -72,9 +72,9 @@ class HTTPClient(Session):
 
     def __create_log(self):
         if SHOULD_LOG_EXTERNAL_REQUESTS:
-            logger.api("Audit External Service", extra=self.log_payload)
+            logger.api("Audit External Service", **self.log_payload)
         else:
-            logger.info("Audit External Service", extra=self.log_payload)
+            logger.info("Audit External Service", **self.log_payload)
 
     def request(self, method, url, **kwargs):
         start_time = time.time()
@@ -154,9 +154,9 @@ class SFTPClient:
 
     def __create_log(self):
         if SHOULD_LOG_EXTERNAL_REQUESTS:
-            logger.api("Audit External Service", extra=self.log_payload)
+            logger.api("Audit External Service", **self.log_payload)
         else:
-            logger.info("Audit External Service", extra=self.log_payload)
+            logger.info("Audit External Service", **self.log_payload)
 
     def connect(
         self,

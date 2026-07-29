@@ -19,8 +19,8 @@ class LogCapture(logging.Handler):
 
     When a formatter is attached (via setFormatter), each record is also
     formatted immediately on emit and stored in `formatted_outputs` as a parsed
-    dict. This matters for formatters (e.g. AppFormatter) that read thread-local
-    state at format time — by the time assertions run, that state may be gone.
+    dict. This matters for formatters that read contextvars state at format
+    time — by the time assertions run, that state may be gone.
     """
 
     def __init__(self):
@@ -101,15 +101,19 @@ def request_log_capture():
 
 @pytest.fixture
 def app_log_capture():
-    """Attach a capturing handler with AppFormatter to the app.publications logger.
+    """Attach a capturing handler with the structlog JSON formatter to the
+    app.publications logger.
 
     Records are formatted immediately on emit so that request_id is read from
-    the thread-local while the request is still active.
+    contextvars while the request is still active.
     """
-    from activity_audit.formatters import AppFormatter
+    from activity_audit.config import get_stdlib_formatter
+
+    formatter_kwargs = get_stdlib_formatter()
+    formatter_cls = formatter_kwargs.pop("()")
 
     capture = LogCapture()
-    capture.setFormatter(AppFormatter())
+    capture.setFormatter(formatter_cls(**formatter_kwargs))
 
     logger = logging.getLogger("app.publications")
     previous_level = logger.level
