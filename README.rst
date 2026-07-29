@@ -11,8 +11,7 @@ Features
 - Custom log levels Audit(21) and API(22) for CRUD and Request-Response auditing.
 - Structured JSON logs for audit trails
 - Human-readable container logs
-- Separate log files for audit and container logs
-- Console and file output options
+- Console-only output via structlog, ready for pipeline ingestion (Vector, CloudWatch, etc.)
 
 Installation
 ------------
