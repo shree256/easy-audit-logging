@@ -5,6 +5,8 @@ from pathlib import Path
 # Add the parent directory to Python path to import activity_audit
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from activity_audit.config import get_stdlib_formatter
+
 DEBUG = True
 
 SECRET_KEY = "test-secret-key-for-testing-only"
@@ -57,16 +59,6 @@ TEMPLATES = [
     },
 ]
 
-# Activity Audit Configuration
-ACTIVITY_AUDIT_SETTINGS = {
-    "LOG_LEVEL": "INFO",
-    "LOG_FORMAT": "json",
-    "LOG_DIR": "tests/audit",
-    "ENABLE_MODEL_LOGGING": True,
-    "ENABLE_REQUEST_LOGGING": True,
-    "MODELS_TO_LOG": ["publications.Book", "publications.Author"],
-}
-
 # REST Framework settings for API testing
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
@@ -93,44 +85,27 @@ TEST_RUNNER = "django.test.runner.DiscoverRunner"
 USE_TZ = True
 TIME_ZONE = "UTC"
 
-# Create audit directory if it doesn't exist
-audit_dir = Path(__file__).parent / "audit"
-audit_dir.mkdir(exist_ok=True)
-
-# Configure logging for activity audit
+# Configure logging for activity audit — structlog JSON output to the console
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "audit": {
-            "()": "activity_audit.formatters.AuditFormatter",
-        },
-        "api": {
-            "()": "activity_audit.formatters.APIFormatter",
-        },
+        "structlog": get_stdlib_formatter(),
     },
     "handlers": {
-        "audit_file": {
-            "level": "INFO",
-            "class": "activity_audit.handlers.AuditLogHandler",
-            "filename": str(audit_dir / "audit.jsonl"),
-            "formatter": "audit",
-        },
-        "api_file": {
-            "level": "INFO",
-            "class": "activity_audit.handlers.APILogHandler",
-            "filename": str(audit_dir / "api.jsonl"),
-            "formatter": "api",
+        "console_struct": {
+            "class": "logging.StreamHandler",
+            "formatter": "structlog",
         },
     },
     "loggers": {
         "audit.model": {
-            "handlers": ["audit_file"],
+            "handlers": ["console_struct"],
             "level": "INFO",
             "propagate": False,
         },
         "audit.request": {
-            "handlers": ["api_file"],
+            "handlers": ["console_struct"],
             "level": "INFO",
             "propagate": False,
         },

@@ -58,16 +58,10 @@ def get_stdlib_formatter() -> dict:
 
 def configure() -> None:
     """
-    Configure structlog for console-only JSON output.
-
-    Produces the same JSON structure as the existing AuditFormatter /
-    APIFormatter / LoginFormatter — same field names, same timestamp format,
-    same uppercase level names — but outputs to stdout via StreamHandler.
-    No file handlers are used.
-
-    merge_contextvars is wired in so Phase 2 (replacing thread-locals with
-    structlog contextvars in middleware) only requires middleware changes;
-    this function and signals.py do not need to change again.
+    Configure structlog for console-only JSON output — same field names,
+    same timestamp format, same uppercase level names as the historical
+    file-based formatters, but rendered to stdout via StreamHandler. No file
+    handlers are used.
     """
     structlog.configure(
         processors=shared_processors

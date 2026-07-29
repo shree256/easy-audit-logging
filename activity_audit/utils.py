@@ -1,129 +1,3 @@
-from .constants import CONSOLE_FORMAT
-
-
-def get_console_formatter() -> dict:
-    return {
-        "format": CONSOLE_FORMAT,
-    }
-
-
-def get_app_formatter(log_type: str = "app") -> dict:
-    return {
-        "()": "activity_audit.formatters.AppFormatter",
-        "log_type": log_type,
-    }
-
-
-def get_api_formatter() -> dict:
-    return {"()": "activity_audit.formatters.APIFormatter"}
-
-
-def get_audit_formatter() -> dict:
-    return {"()": "activity_audit.formatters.AuditFormatter"}
-
-
-def get_json_handler(
-    level: str,
-    filename: str = "audit_logs/app.log",
-    formatter: str = "json",
-    max_bytes: int = 1024 * 1024 * 10,
-    backup_count: int = 5,
-) -> dict:
-    return {
-        "level": level,
-        "class": "logging.handlers.RotatingFileHandler",
-        "formatter": formatter,
-        "filename": filename,
-        "maxBytes": max_bytes,
-        "backupCount": backup_count,
-    }
-
-
-def get_api_handler(
-    filename: str = "audit_logs/api.log",
-) -> dict:
-    return {
-        "class": "activity_audit.handlers.APILogHandler",
-        "filename": filename,
-        "maxBytes": 1024 * 1024 * 10,  # 10MB
-        "backupCount": 5,
-    }
-
-
-def get_audit_handler(
-    filename: str = "audit_logs/audit.log",
-) -> dict:
-    return {
-        "class": "activity_audit.handlers.AuditLogHandler",
-        "filename": filename,
-        "maxBytes": 1024 * 1024 * 10,  # 10MB
-        "backupCount": 5,
-    }
-
-
-def get_login_handler(
-    filename: str = "audit_logs/login.log",
-) -> dict:
-    return {
-        "class": "activity_audit.handlers.LoginLogHandler",
-        "filename": filename,
-        "maxBytes": 1024 * 1024 * 5,  # 5MB
-        "backupCount": 5,
-    }
-
-
-# ASYNC ------------------------------------------------------
-def get_async_json_handler(
-    level: str = "DEBUG",
-    filename: str = "audit_logs/app.log",
-    max_bytes: int = 1024 * 1024 * 10,
-    backup_count: int = 5,
-) -> dict:
-    return {
-        "level": level,
-        "class": "activity_audit.handlers.AsyncJsonHandler",
-        "filename": filename,
-        "maxBytes": max_bytes,
-        "backupCount": backup_count,
-    }
-
-
-def get_async_api_handler(
-    filename: str = "audit_logs/api.log",
-) -> dict:
-    return {
-        "class": "activity_audit.handlers.AsyncAPILogHandler",
-        "filename": filename,
-        "maxBytes": 1024 * 1024 * 10,  # 10MB
-        "backupCount": 5,
-    }
-
-
-def get_async_audit_handler(
-    filename: str = "audit_logs/audit.log",
-) -> dict:
-    return {
-        "class": "activity_audit.handlers.AsyncAuditLogHandler",
-        "filename": filename,
-        "maxBytes": 1024 * 1024 * 10,  # 10MB
-        "backupCount": 5,
-    }
-
-
-def get_async_login_handler(
-    filename: str = "audit_logs/login.log",
-) -> dict:
-    return {
-        "class": "activity_audit.handlers.AsyncLoginLogHandler",
-        "filename": filename,
-        "maxBytes": 1024 * 1024 * 5,  # 5MB
-        "backupCount": 5,
-    }
-
-
-# ----------------------------------------------------------------
-
-
 def push_usage_log(
     message: str,
     event: str,
@@ -143,23 +17,18 @@ def push_usage_log(
             - status_code: status code
         }
     """
-    import logging
-
+    from .config import get_logger
     from .middleware import get_user_details
 
-    logger = logging.getLogger("audit.login")
+    logger = get_logger("audit.login")
     user_id, user_info = get_user_details()
-
-    data = {
-        "user_id": user_id,
-        "user_info": user_info,
-        "event": event,
-        "success": success,
-        "error": error,
-        "extra": extra,
-    }
 
     logger.login(
         message,
-        extra=data,
+        user_id=user_id,
+        user_info=user_info,
+        event=event,
+        success=success,
+        error=error,
+        extra=extra,
     )
