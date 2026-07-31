@@ -13,6 +13,7 @@ import logging
 
 import pytest
 
+from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -125,6 +126,42 @@ class TestModelCRUDLogging:
             "request_id",
         ):
             assert hasattr(record, field), f"Model log record missing field: {field}"
+
+    def test_create_via_authenticated_request_includes_user_data(
+        self, model_log_capture
+    ):
+        """AUDIT-level model logs must carry the acting user, not just request_id.
+
+        Regression test: push_log() used to read user_id/user_info from
+        structlog contextvars, which the middleware only binds *after*
+        get_response() returns — i.e. after model saves (and this signal)
+        have already fired. That left every in-request AUDIT log with a
+        blank user_id/user_info even for fully authenticated requests.
+        """
+        user = get_user_model().objects.create_user(
+            username="alice",
+            email="alice@example.com",
+            first_name="Alice",
+            last_name="Doe",
+            password="pw",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/authors/",
+            {"name": "Authenticated Author", "experience": "Some"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        events = model_log_capture.by_event_type("CREATE")
+        author_events = [e for e in events if e.model == "Author"]
+        assert author_events, "Expected a CREATE audit record for Author"
+        record = author_events[0]
+
+        assert record.user_id == str(user.id)
+        assert record.user_info.get("email") == "alice@example.com"
 
     def test_update_is_logged(self, model_log_capture):
         author = Author.objects.create(name="Author", experience="Original")

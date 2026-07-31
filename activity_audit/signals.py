@@ -17,6 +17,7 @@ from django.dispatch import receiver
 from django.forms.models import model_to_dict
 
 from activity_audit.config import get_logger
+from activity_audit.middleware import get_user_details
 from activity_audit.unregistered import UNREGISTERED_CLASSES
 
 _log = get_logger("audit.model")
@@ -130,16 +131,21 @@ def push_log(
     extra: dict = {},
 ) -> None:
     try:
-        # Snapshot contextvars now — on_commit fires after the transaction commits
-        # and the middleware may have already cleared contextvars by then.
+        # Snapshot contextvars/user now — on_commit fires after the transaction commits
+        # and the middleware may have already cleared them by then. user_id/user_info
+        # aren't read from contextvars because the middleware only binds them there
+        # after get_response() returns, which is after model saves (and this signal)
+        # have already fired; get_user_details() reads the live request.user instead,
+        # which is populated as soon as Django's auth middleware runs.
         ctx_vars = ctx.get_contextvars()
+        user_id, user_info = get_user_details()
         bound = _log.bind(
             model=model,
             instance_id=str(instance_id),
             event_type=event_type,
             request_id=ctx_vars.get("request_id", ""),
-            user_id=ctx_vars.get("user_id", ""),
-            user_info=ctx_vars.get("user_info", {}),
+            user_id=user_id,
+            user_info=user_info,
             instance_repr=instance_repr,
             extra=extra,
         )

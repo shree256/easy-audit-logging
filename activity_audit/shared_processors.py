@@ -203,6 +203,7 @@ shared_processors = [
     structlog.contextvars.merge_contextvars,
     structlog.stdlib.add_log_level,
     structlog.stdlib.add_logger_name,
+    structlog.stdlib.PositionalArgumentsFormatter(),
     _audit_timestamp,
     _uppercase_level,
     _rename_structlog_keys,
