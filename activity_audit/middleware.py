@@ -10,6 +10,7 @@ import structlog.contextvars as ctx
 from asgiref.sync import (
     iscoroutinefunction,
     markcoroutinefunction,
+    sync_to_async,
 )
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
@@ -236,7 +237,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         end_time = time.time()
 
         # Capture user details AFTER authentication has happened
-        user_id, user_info = get_user_details()
+        user_id, user_info = await sync_to_async(get_user_details)()
         ctx.bind_contextvars(user_id=user_id, user_info=user_info)
 
         # TODO: Find way to add status code to response_data
